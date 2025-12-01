@@ -2,6 +2,7 @@
 
 use std::fs;
 use std::env;
+use std::fs::File;
 use rand::{rng, Rng};
 use rand_distr::{Normal, Distribution};
 use std::io::Write;
@@ -9,9 +10,12 @@ use std::io::Write;
 
 fn main() {
     println!("Starting program!");
+
     let args: Vec<String> = env::args().collect();
     let file_path: &String = &args[1];
     let out_path = &args[2];
+
+    let out_file  = std::fs::OpenOptions::new().write(true).truncate(true).create(true).open(out_path).expect("This path could NOT be used as output path. Maybe dir does not exist?");
     let fasta_string: String = fs::read_to_string(file_path)
         .expect("File could not be read - maybe wrong path?");
     let vec_from_fna_parsed  = parse_fasta(fasta_string);
@@ -22,7 +26,7 @@ fn main() {
 
     println!("First cell is from {}.\nThe first simulated fragment is {}.\nThe first (trimmed) fragment is {} bp long.", simulated_fragments[0].0, simulated_fragments[0].1[0], simulated_fragments[0].1[0].len());
 
-    format_and_write_to_tirp(simulated_fragments, out_path);
+    format_and_write_to_tirp(simulated_fragments, out_file);
 }
 
 // Taken from Reddit (https://www.reddit.com/r/rust/comments/r5je0y/help_parsing_a_fasta_file/) lol
@@ -94,12 +98,12 @@ fn mass_seq_shear_amp(vec_of_seqs: Vec<(String,String)>) -> Vec<(String, Vec<Str
   out_vec
 }
 
-fn format_and_write_to_tirp(vec_ident_fragments: Vec<(String, Vec<String>)>, output_path: &String) -> () {
+fn format_and_write_to_tirp(vec_ident_fragments: Vec<(String, Vec<String>)>, output_file: File) -> () {
   // Purpose is to use the simulated fragments, reformat them to reads and write to a .tirp file.
   // --Thinking that maybe using the identifier as the cell-id?
   // Init an output file
   // Add to main()
-  let mut out_tirp = std::fs::OpenOptions::new().write(true).truncate(true).create(true).open(output_path).expect("This path could NOT be used as output path. Maybe dir does not exist?");
+  let mut out_tirp = output_file;
 
   let phred_score = (0..150).map(|_| "F").collect::<String>();
   for cell in vec_ident_fragments {
@@ -107,16 +111,18 @@ fn format_and_write_to_tirp(vec_ident_fragments: Vec<(String, Vec<String>)>, out
       // Make cell id to be used for column of index 0 in tirp
       let mut cell_id = cell.0[..11].to_string();
       cell_id.push_str("#");
-      cell_id.push_str(idx.to_string().trim());
+      cell_id.push_str(&(format!("{:06}", idx)));
       // Colidx 1 to 3 is nonsense added in written string UPDATE: I see it is 1 to 2 now.
       // Make r1 and r2, cols of idx 4 and 5
-    let r1 = &fragment[..150];
-    // Unsure on this one actually, how does it look from the Illumina machine???
-    let r2 = &fragment.chars().rev().collect::<String>()[..150];
-    // q1 and q2 (colidx 6 to 7) will point to phred_score and last col is a blankspace
-    let out_str_line = format!("{}\t1\t1\t{}\t{}\t{}\t{}\t \n", cell_id, r1, r2, &phred_score, &phred_score);
-    let _ = out_tirp.write_all(out_str_line.as_bytes()).expect("Problem with writing tirp data content");
-    println!("{}", out_str_line)
+      let r1 = &fragment[..150];
+      // Unsure on this one actually, how does it look from the Illumina machine???
+      let r2 = &fragment.chars().rev().collect::<String>()[..150];
+      // q1 and q2 (colidx 6 to 7) will point to phred_score and last col is a blankspace
+      let out_str_line = format!("{}\t1\t1\t{}\t{}\t{}\t{}\t \n", cell_id, r1, r2, &phred_score, &phred_score);
+      let _ = out_tirp.write_all(out_str_line.as_bytes()).expect("Problem with writing tirp data content");
+      if idx % 500 == 0 {
+        println!("{}", out_str_line)
+      }
     }
   }
 }

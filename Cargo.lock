@@ -67,14 +67,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proto_sim_week47"
-version = "0.1.0"
-dependencies = [
- "rand",
- "rand_distr",
-]
-
-[[package]]
 name = "quote"
 version = "1.0.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -126,6 +118,14 @@ checksum = "6a8615d50dcf34fa31f7ab52692afec947c4dd0ab803cc87cb3b0b4570ff7463"
 dependencies = [
  "num-traits",
  "rand",
+]
+
+[[package]]
+name = "rust-project-simulation"
+version = "0.1.0"
+dependencies = [
+ "rand",
+ "rand_distr",
 ]
 
 [[package]]

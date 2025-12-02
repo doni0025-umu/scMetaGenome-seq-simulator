@@ -1,0 +1,2 @@
+Cloned<std::slice::Iter<'_, (char, char)>>
+HashMap<_, _, _>: From<Cloned<std::slice::Iter<'_, (char, char)>>>

@@ -1,2 +1,5 @@
 out.tirp
 out.tirp.gz
+out_meta.tsv
+fasta-files/*
+ncbi_dataset/*

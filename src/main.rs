@@ -27,6 +27,10 @@ fn main() -> std::io::Result<()> {
     let phred_score_prea = (0..150).map(|_| "F").collect::<String>();
     let base_comp_prea = HashMap::from([('A', 'T'), ('T','A'),('G', 'C'), ('C','G'), ('N', 'N'),]);
 
+    // Preamble for metafile_line_writer
+    let out_metafile_path = &args[3];
+    let out_metafile = std::fs::OpenOptions::new().write(true).truncate(true).create(true).open(out_metafile_path).expect("This path could NOT be used as Metafile output path. Maybe dir does not exist?");
+
     for (cellid_hashnum, entry) in fs::read_dir(dir_path)?.enumerate() {
       let cellid_hashnum = cellid_hashnum + 1;
       let dir = entry.expect("Could not read dir-entry.");
@@ -35,7 +39,7 @@ fn main() -> std::io::Result<()> {
       // Function calls
       let fna_to_hashmap  = parse_fasta(fasta_string);
 
-      mass_seq_shear_amp(fna_to_hashmap, min_len, max_len, fragm_per_bp, frag_len_distr, &output_file, &base_comp_prea, &phred_score_prea, cellid_hashnum);
+      mass_seq_shear_amp(fna_to_hashmap, min_len, max_len, fragm_per_bp, frag_len_distr, &output_file, &base_comp_prea, &phred_score_prea, cellid_hashnum, &out_metafile);
     }
  Ok(())
 }
@@ -67,19 +71,23 @@ fn mass_seq_shear_amp(hashmap_of_seqs: HashMap<String,String>,
                     output_file: &File, 
                     base_comp: &HashMap<char,char>,
                     phred_score: &String,
-                    cellid_hashnum: usize) -> () {
+                    cellid_hashnum: usize,
+                    out_metafile: &File,) -> () {
   // Meant to take a (heading, seq) tuple and give the heading coupled with digested fragments (random substrings) stored in a Vectors with string elements.
   // Each sample should have equal amounts of sequencing depth. That SHOULD correspond to the number of times looped over a specific genome(?)
   // -- This means that different compositions of microbiome - i.e 1 E. coli vs 2 S. Typhimurim should be specified in the fasta file used for input.
   // The chromosome should also be circular.
   // Each fragment is at max 550 bp and lowest is 150 bp. This is nice as the tirp file will have no overlap "overflow" between the R1 and R2 columns since the smallest case will be R2 = reversed(R1). 
   // NOTE: Here, we are starting from after adapter trimming giving us our reads that are ONLY from the sample dna sequence.
-  
-  let output_file = output_file;
 
   for (contig_name, sequence_str)in hashmap_of_seqs {
     let seq_len = sequence_str.len();
-    for _ in 1..=((frag_per_bp*(sequence_str.len() as f64)).floor() as i32) {  //125000 would roughly be equal to 50 Megabits of DNA string and 1 000 000 will roughly equal 50 MB of DNA string (in UTF-8 encoding).
+
+    // Decide the Copy Number via poission and some valid meta knowledge
+    let copy_number = rand::rng().random_range(1..=2);
+
+    let num_of_reads = copy_number*(frag_per_bp*(sequence_str.len() as f64)).floor() as usize;
+    for _ in 1..=num_of_reads {  //125000 would roughly be equal to 50 Megabits of DNA string and 1 000 000 will roughly equal 50 MB of DNA string (in UTF-8 encoding).
       let start_seq_idx: usize = rand::rng().random_range(0..=seq_len);
       // Loop to ensure fragment is within length limits
       let fragment_len: usize = loop {
@@ -105,6 +113,8 @@ fn mass_seq_shear_amp(hashmap_of_seqs: HashMap<String,String>,
         println!("{} fragments generated.", fragments.len())
       }     */
   }
+  // Write info out to the metafile
+  metafile_line_writer(&out_metafile, &contig_name, &cellid_hashnum, &copy_number, &num_of_reads,);
 }
                    }
 
@@ -132,4 +142,20 @@ fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
   let out_str_line = format!("{}\t1\t1\t{}\t{}\t{}\t{}\t \n", cell_id, r1, r2, &phred_score, &phred_score);
   let _ = output_file.write_all(out_str_line.as_bytes()).expect("Problem with writing tirp data content");
     
+}
+
+fn metafile_line_writer(mut out_metafile: &File,
+                        contig_name: &String,
+                        cellid_hashnum: &usize,
+                        copy_number: &usize,
+                        num_of_reads: &usize,
+                    ) -> () {
+/*  cellID	strain	copyNumber	contigName	readCount
+    0001	salmonella	1	main	    12
+    0001	salmonella	2	plasmid1	1234
+    0001	salmonella	3	plasmid2	234 */
+    let strain_name = contig_name.split(" ").skip(1).next().unwrap();
+    let out_str_line = format!("{}\t{}\t{}\t{}\t{}\n", format!("#{:06}", cellid_hashnum), strain_name, copy_number, contig_name, num_of_reads,);
+    let _ = out_metafile.write_all(out_str_line.as_bytes()).expect("Problem with writing metadata content");
+    println!("Metaline for {} written!", contig_name)
 }

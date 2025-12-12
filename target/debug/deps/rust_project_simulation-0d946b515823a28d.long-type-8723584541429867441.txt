@@ -1,0 +1,13 @@
+_: serde_core::de::Deserialize<'_>
+(T0, T1, T2, T3, T4, T5, T6, T7)
+(T0, T1, T2, T3, T4, T5, T6, T7, T8)
+(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9)
+(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10)
+(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11)
+(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12)
+(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13)
+(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14)
+(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15)
+serde_core::de::ignored_any::IgnoredAny
+serde_json::Map<std::string::String, Value>
+std::ops::RangeInclusive<Idx>

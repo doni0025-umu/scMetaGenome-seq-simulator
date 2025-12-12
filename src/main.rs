@@ -5,10 +5,13 @@ use std::fs;
 use std::env;
 use std::fs::File;
 use std::fs::ReadDir;
-use std::path::PathBuf;
+use json::JsonValue;
+use rand::seq;
 use rand::{rng, Rng};
 use rand_distr::{Normal, Distribution, Poisson};
 use std::io::Write;
+use json;
+
 
 
 fn main() -> std::io::Result<()> {
@@ -36,17 +39,20 @@ fn main() -> std::io::Result<()> {
 
     for (cellid_hashnum, entry) in dir_genomes.enumerate() {
       let cellid_hashnum = cellid_hashnum + 1;
-      let mut assembly_dir = fs::read_dir(entry.expect("Could not read dir-entry.").path()).unwrap();
-      
-      let fasta_string = fs::read_to_string(find_file_in_asmbly(&mut assembly_dir, ".fna")).expect("Could not read into string");
 
-/*       let seq_report = find_file_in_asmbly(&mut assembly_dir, "sequence_report.jsonl");
-      let asmbly_report = find_file_in_asmbly(&mut assembly_dir, "assembly_data_report.jsonl"); */
-    
+      let entry_path = entry.expect("Could not read dir-entry.").path();
+
+      let fasta_string = find_file_in_asmbly(&mut fs::read_dir(&entry_path).unwrap(), ".fna");
+      
+      let seq_report = find_file_in_asmbly(&mut fs::read_dir(&entry_path).unwrap(), "sequence_report.jsonl");
+
+      let asmbly_report = find_file_in_asmbly(&mut fs::read_dir(&entry_path).unwrap(), "assembly_data_report.jsonl");
+
+
       // Function calls
       let fna_to_hashmap  = parse_fasta(fasta_string);
 
-      mass_seq_shear_amp(fna_to_hashmap, min_len, max_len, fragm_per_bp, frag_len_distr, &output_file, &base_comp_prea, &phred_score_prea, cellid_hashnum, &out_metafile, poi);
+      mass_seq_shear_amp(fna_to_hashmap, min_len, max_len, fragm_per_bp, frag_len_distr, &output_file, &base_comp_prea, &phred_score_prea, cellid_hashnum, &out_metafile, poi, seq_report, asmbly_report);
     }
     Ok(())
     }
@@ -82,7 +88,10 @@ fn mass_seq_shear_amp(hashmap_of_seqs: HashMap<String,String>,
                     phred_score: &String,
                     cellid_hashnum: usize,
                     out_metafile: &File,
-                    poi: Poisson<f64>,) -> () {
+                    poi: Poisson<f64>,
+                    seq_report: String,
+                    asmbly_report: String,
+                ) -> () {
   // Meant to take a (heading, seq) tuple and give the heading coupled with digested fragments (random substrings) stored in a Vectors with string elements.
   // Each sample should have equal amounts of sequencing depth. That SHOULD correspond to the number of times looped over a specific genome(?)
   // -- This means that different compositions of microbiome - i.e 1 E. coli vs 2 S. Typhimurim should be specified in the fasta file used for input.
@@ -90,11 +99,19 @@ fn mass_seq_shear_amp(hashmap_of_seqs: HashMap<String,String>,
   // Each fragment is at max 550 bp and lowest is 150 bp. This is nice as the tirp file will have no overlap "overflow" between the R1 and R2 columns since the smallest case will be R2 = reversed(R1). 
   // NOTE: Here, we are starting from after adapter trimming giving us our reads that are ONLY from the sample dna sequence.
 
+
   for (idx_in_fasta, (contig_name, sequence_str)) in hashmap_of_seqs.iter().enumerate() {
     let seq_len = sequence_str.len();
+    let refseq_acc = contig_name.split_whitespace().next().expect("REASON");
+    let seq_report = json::parse(&seq_report.lines().filter(|line| line.contains(refseq_acc)).next().unwrap().to_string()).unwrap();
+    let asmbly_report = json::parse(&asmbly_report).unwrap();
 
+
+    let mut chr_name = &mut seq_report["assignedMoleculeLocationType"].to_string();
+    let strain_name = &asmbly_report["checkmInfo"]["checkmMarkerSet"].to_string();
     // Decide the Copy Number via poission and some valid meta knowledge
-    let copy_number = if idx_in_fasta == 0 {1 as usize} else {poi.sample(&mut rand::rng()) as usize};
+    let copy_number = if chr_name == "Chromosome" {1 as usize} else {poi.sample(&mut rand::rng()) as usize};
+    chr_name.push_str(&format!("{}", idx_in_fasta));
 
     let num_of_reads = copy_number*(frag_per_bp*(sequence_str.len() as f64)).floor() as usize;
     for _ in 1..=num_of_reads {  //125000 would roughly be equal to 50 Megabits of DNA string and 1 000 000 will roughly equal 50 MB of DNA string (in UTF-8 encoding).
@@ -118,13 +135,13 @@ fn mass_seq_shear_amp(hashmap_of_seqs: HashMap<String,String>,
         let fragment = sequence_str[start_seq_idx..(&start_seq_idx+&fragment_len)].to_string();
         format_and_write_to_tirp_line((&contig_name, &fragment), &output_file, &base_comp, &phred_score, &cellid_hashnum);
       }
-      // System feedback for every 5000th fragment
-/*       if fragments.len() % 5000 == 0 {
-        println!("{} fragments generated.", fragments.len())
-      }     */
+
   }
   // Write info out to the metafile
-  metafile_line_writer(&out_metafile, &contig_name, &cellid_hashnum, &copy_number, &num_of_reads,);
+
+
+
+  metafile_line_writer(&out_metafile, chr_name, &cellid_hashnum, &copy_number, &num_of_reads, strain_name,);
 }
                    }
 
@@ -155,23 +172,22 @@ fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
 }
 
 fn metafile_line_writer(mut out_metafile: &File,
-                        contig_name: &String,
+                        chr_name: &String,
                         cellid_hashnum: &usize,
                         copy_number: &usize,
                         num_of_reads: &usize,
-//                       seq_report: &File,
+                        strain_name: &String,
                     ) -> () {
 /*  cellID	strain	copyNumber	contigName	readCount
     0001	salmonella	1	main	    12
     0001	salmonella	2	plasmid1	1234
     0001	salmonella	3	plasmid2	234 */
-    let strain_name = contig_name.split(" ").skip(1).next().unwrap();
-    let out_str_line = format!("{}\t{}\t{}\t{}\t{}\n", format!("#{:06}", cellid_hashnum), strain_name, copy_number, contig_name, num_of_reads,);
+    let out_str_line = format!("cell#{:06}\t{}\t{}\t{}\t{}\n",cellid_hashnum, strain_name, copy_number, chr_name, num_of_reads,);
     let _ = out_metafile.write_all(out_str_line.as_bytes()).expect("Problem with writing metadata content");
-    //println!("Metaline for {} written!", contig_name)
+    println!("Metaline for cell#{:06} written!", cellid_hashnum);
 }
 
-fn find_file_in_asmbly(assembly_dir: &mut ReadDir, f_name_pat: &str) -> PathBuf {
-    let res = assembly_dir.find(|f| f.as_ref().unwrap().file_name().into_string().unwrap().ends_with(f_name_pat)).unwrap().expect("File could not be opened").path();
-    res
+fn find_file_in_asmbly(assembly_dir: &mut ReadDir, f_name_pat: &str) -> String {
+    let res = fs::read_to_string(assembly_dir.find(|f| f.as_ref().unwrap().file_name().into_string().unwrap().ends_with(f_name_pat)).unwrap().expect("File could not be opened").path()).expect("file with ending {f_name_pat} could not be read!");
+    return res;
 }

@@ -5,8 +5,6 @@ use std::fs;
 use std::env;
 use std::fs::File;
 use std::fs::ReadDir;
-use json::JsonValue;
-use rand::seq;
 use rand::{rng, Rng};
 use rand_distr::{Normal, Distribution, Poisson};
 use std::io::Write;
@@ -25,11 +23,11 @@ fn main() -> std::io::Result<()> {
     let max_len: usize = 550;
     let fragm_per_bp: f64 = 0.01;
     let frag_len_distr: Normal<f32> = Normal::new(400.0, 50.0).unwrap();
-    let poi = Poisson::new(2.0).unwrap();
+    let poi = Poisson::new(13.0).unwrap();
 
     // Preamble for write-to-tirp
     let out_path = &args[1];
-    let output_file  = std::fs::OpenOptions::new().write(true).truncate(true).create(true).open(out_path).expect("This path could NOT be used as output path. Maybe dir does not exist?");
+    let mut output_file  = std::fs::OpenOptions::new().write(true).truncate(true).create(true).open(out_path).expect("This path could NOT be used as output path. Maybe dir does not exist?");
     let phred_score_prea = (0..150).map(|_| "F").collect::<String>();
     let base_comp_prea = HashMap::from([('A', 'T'), ('T','A'),('G', 'C'), ('C','G'), ('N', 'N'),]);
 
@@ -50,19 +48,17 @@ fn main() -> std::io::Result<()> {
 
 
       // Function calls
-      let fna_to_hashmap  = parse_fasta(fasta_string);
+      let fna_to_vec  = parse_fasta(fasta_string);
 
-      mass_seq_shear_amp(fna_to_hashmap, min_len, max_len, fragm_per_bp, frag_len_distr, &output_file, &base_comp_prea, &phred_score_prea, cellid_hashnum, &out_metafile, poi, seq_report, asmbly_report);
+      mass_seq_shear_amp(fna_to_vec, min_len, max_len, fragm_per_bp, frag_len_distr, &mut output_file, &base_comp_prea, &phred_score_prea, cellid_hashnum, &out_metafile, poi, seq_report, asmbly_report);
     }
     Ok(())
     }
 
 
-
-
-fn parse_fasta(file: String) -> HashMap<String,String> {
+fn parse_fasta(file: String) -> Vec<(String,String)> {
   // Taken from Reddit (https://www.reddit.com/r/rust/comments/r5je0y/help_parsing_a_fasta_file/) lol
-    let file_hashmap = file.split(">")         
+    let file_vec = file.split(">")         
       .skip(1) // Ignores first empty split - so the empty "" that happens before the first ">"
       .map(|s| {
         let mut lines = s.split("\n");
@@ -71,19 +67,19 @@ fn parse_fasta(file: String) -> HashMap<String,String> {
         print!("{}", contig_name);
         (contig_name, sequence_str)
       })
-      .collect::<HashMap<String,String>>();
-    file_hashmap
+      .collect::<Vec<(String,String)>>();
+    file_vec
     // Unstable sorting because it is faster 
 /*     file_vec.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
     file_vec */
 }
 
-fn mass_seq_shear_amp(hashmap_of_seqs: HashMap<String,String>, 
+fn mass_seq_shear_amp(vec_of_seqs: Vec<(String,String)>, 
                     min_len: usize,
                     max_len: usize, 
                     frag_per_bp: f64, 
                     frag_len_distr: Normal<f32>,
-                    output_file: &File, 
+                    output_file: &mut File, 
                     base_comp: &HashMap<char,char>,
                     phred_score: &String,
                     cellid_hashnum: usize,
@@ -100,14 +96,14 @@ fn mass_seq_shear_amp(hashmap_of_seqs: HashMap<String,String>,
   // NOTE: Here, we are starting from after adapter trimming giving us our reads that are ONLY from the sample dna sequence.
 
 
-  for (idx_in_fasta, (contig_name, sequence_str)) in hashmap_of_seqs.iter().enumerate() {
+  for (idx_in_fasta, (contig_name, sequence_str)) in vec_of_seqs.clone().into_iter().enumerate() {
     let seq_len = sequence_str.len();
     let refseq_acc = contig_name.split_whitespace().next().expect("REASON");
     let seq_report = json::parse(&seq_report.lines().filter(|line| line.contains(refseq_acc)).next().unwrap().to_string()).unwrap();
     let asmbly_report = json::parse(&asmbly_report).unwrap();
 
 
-    let mut chr_name = &mut seq_report["assignedMoleculeLocationType"].to_string();
+    let chr_name = &mut seq_report["assignedMoleculeLocationType"].to_string();
     let strain_name = &asmbly_report["checkmInfo"]["checkmMarkerSet"].to_string();
     // Decide the Copy Number via poission and some valid meta knowledge
     let copy_number = if chr_name == "Chromosome" {1 as usize} else {poi.sample(&mut rand::rng()) as usize};
@@ -143,6 +139,7 @@ fn mass_seq_shear_amp(hashmap_of_seqs: HashMap<String,String>,
 
   metafile_line_writer(&out_metafile, chr_name, &cellid_hashnum, &copy_number, &num_of_reads, strain_name,);
 }
+write_chrom_to_tirp_line(vec_of_seqs, output_file, &seq_report, &cellid_hashnum,)
                    }
 
 fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
@@ -154,11 +151,6 @@ fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
   // --Thinking that maybe using the identifier as the cell-id?
   // Init an output file
   // Add to main()
-  // Make cell id to be used for column of index 0 in tirp
-  let mut cell_id = tup_contigname_fragment.0[..11].to_string();
-  cell_id.push_str("#");
-  cell_id.push_str(&(format!("{:06}", cellid_hashnum)));
-
   let fragment = tup_contigname_fragment.1;
   // Colidx 1 to 3 is nonsense added in written string UPDATE: I see it is 1 to 2 now.
   // Make r1 and r2, cols of idx 4 and 5
@@ -166,8 +158,31 @@ fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
   // Reverses fragment and complements the 150 bases via a HashMap
   let r2 = &fragment.chars().rev().collect::<String>()[..150].chars().map(|b|{base_comp.get(&b).copied().unwrap_or('N')}).collect::<String>();
   // q1 and q2 (colidx 6 to 7) will point to phred_score and last col is a blankspace
-  let out_str_line = format!("{}\t1\t1\t{}\t{}\t{}\t{}\t \n", cell_id, r1, r2, &phred_score, &phred_score);
+  let out_str_line = format!("cell#{:06}\t1\t1\t{}\t{}\t{}\t{}\t \n", cellid_hashnum, r1, r2, &phred_score, &phred_score);
   let _ = output_file.write_all(out_str_line.as_bytes()).expect("Problem with writing tirp data content");
+    
+}
+
+fn write_chrom_to_tirp_line(vec_of_seqs: Vec<(String,String)>,
+                                output_file: &mut File,
+                                seq_report: &String,
+                                cellid_hashnum: &usize,) -> () {
+  // Purpose is to use the simulated fragments, reformat them to reads and write to a .tirp file.
+  // --Thinking that maybe using the identifier as the cell-id?
+  let seq_report = seq_report.split("\n").collect::<Vec<&str>>();
+  for (contig_name, seq) in vec_of_seqs {
+    for line in &seq_report {
+      if line.contains(contig_name.split_whitespace().next().unwrap()) {
+        let seq_report_json = json::parse(line).unwrap();
+        if seq_report_json["refseqAccession"] == contig_name.split_whitespace().next().unwrap() && seq_report_json["assignedMoleculeLocationType"] == "Chromosome" {
+            let out_str_line = format!("cell#{:06}_ref\t1\t1\t{}\t\t{}\t\t \n", cellid_hashnum, seq, (0..seq.len()).map(|_| "F").collect::<String>());
+            let _ = output_file.write_all(out_str_line.as_bytes()).expect("Problem with writing tirp data content");
+          
+        }
+      }
+    }
+  }
+
     
 }
 

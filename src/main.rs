@@ -5,11 +5,24 @@ use std::fs;
 use std::env;
 use std::fs::File;
 use std::fs::ReadDir;
+use json::JsonValue;
 use rand::{rng, Rng};
 use rand_distr::{Normal, Distribution, Poisson};
 use std::io::Write;
 use json;
 
+
+
+struct CellidHashnum {
+    id_counter: usize
+}
+
+impl CellidHashnum {
+    fn count(&mut self) -> () {
+        self.id_counter = self.id_counter + 1;
+    }
+
+}
 
 
 fn main() -> std::io::Result<()> {
@@ -35,8 +48,13 @@ fn main() -> std::io::Result<()> {
     let out_metafile_path = &args[2];
     let out_metafile = std::fs::OpenOptions::new().write(true).truncate(true).create(true).open(out_metafile_path).expect("This path could NOT be used as Metafile output path. Maybe dir does not exist?");
 
-    for (cellid_hashnum, entry) in dir_genomes.enumerate() {
-      let cellid_hashnum = cellid_hashnum + 1;
+    let metagenome_json  = json::parse(&fs::read_to_string("run-setup.json").expect("could not read run-setup.json!")).expect("Problem with run-setup.json");
+
+    let mut cellid_hashnum = CellidHashnum {
+      id_counter: 1,
+    };
+
+    for entry in dir_genomes {
 
       let entry_path = entry.expect("Could not read dir-entry.").path();
 
@@ -44,17 +62,25 @@ fn main() -> std::io::Result<()> {
       
       let seq_report = find_file_in_asmbly(&mut fs::read_dir(&entry_path).unwrap(), "sequence_report.jsonl");
 
-      let asmbly_report = find_file_in_asmbly(&mut fs::read_dir(&entry_path).unwrap(), "assembly_data_report.jsonl");
+      let asmbly_report = json::parse(&find_file_in_asmbly(&mut fs::read_dir(&entry_path).unwrap(), "assembly_data_report.jsonl")).expect("assembly json could not be parsed");
+      
+      // Function (all things for an entry so it is loaded and ready) -> <HashMap(PathBuf, HashMap(String, ))
 
+      let num_bacteria = (&metagenome_json[&asmbly_report["currentAccession"].to_string()].to_string()).parse::<usize>().unwrap();
 
-      // Function calls
+      println!("{}",num_bacteria);
+
+      
       let fna_to_vec  = parse_fasta(fasta_string);
 
-      mass_seq_shear_amp(fna_to_vec, min_len, max_len, fragm_per_bp, frag_len_distr, &mut output_file, &base_comp_prea, &phred_score_prea, cellid_hashnum, &out_metafile, poi, seq_report, asmbly_report);
+      for _ in 0..num_bacteria {
+        // Function calls
+        mass_seq_shear_amp(&fna_to_vec, min_len, max_len, fragm_per_bp, frag_len_distr, &mut output_file, &base_comp_prea, &phred_score_prea, cellid_hashnum.id_counter, &out_metafile, poi, &seq_report, &asmbly_report);
+        cellid_hashnum.count();
+      }
     }
     Ok(())
     }
-
 
 fn parse_fasta(file: String) -> Vec<(String,String)> {
   // Taken from Reddit (https://www.reddit.com/r/rust/comments/r5je0y/help_parsing_a_fasta_file/) lol
@@ -64,17 +90,13 @@ fn parse_fasta(file: String) -> Vec<(String,String)> {
         let mut lines = s.split("\n");
         let contig_name = lines.next().unwrap().to_string();
         let sequence_str = lines.collect::<String>();
-        print!("{}", contig_name);
         (contig_name, sequence_str)
       })
       .collect::<Vec<(String,String)>>();
     file_vec
-    // Unstable sorting because it is faster 
-/*     file_vec.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
-    file_vec */
 }
 
-fn mass_seq_shear_amp(vec_of_seqs: Vec<(String,String)>, 
+fn mass_seq_shear_amp(vec_of_seqs: &Vec<(String,String)>,
                     min_len: usize,
                     max_len: usize, 
                     frag_per_bp: f64, 
@@ -85,8 +107,8 @@ fn mass_seq_shear_amp(vec_of_seqs: Vec<(String,String)>,
                     cellid_hashnum: usize,
                     out_metafile: &File,
                     poi: Poisson<f64>,
-                    seq_report: String,
-                    asmbly_report: String,
+                    seq_report: &String,
+                    asmbly_report: &JsonValue,
                 ) -> () {
   // Meant to take a (heading, seq) tuple and give the heading coupled with digested fragments (random substrings) stored in a Vectors with string elements.
   // Each sample should have equal amounts of sequencing depth. That SHOULD correspond to the number of times looped over a specific genome(?)
@@ -100,8 +122,6 @@ fn mass_seq_shear_amp(vec_of_seqs: Vec<(String,String)>,
     let seq_len = sequence_str.len();
     let refseq_acc = contig_name.split_whitespace().next().expect("REASON");
     let seq_report = json::parse(&seq_report.lines().filter(|line| line.contains(refseq_acc)).next().unwrap().to_string()).unwrap();
-    let asmbly_report = json::parse(&asmbly_report).unwrap();
-
 
     let chr_name = &mut seq_report["assignedMoleculeLocationType"].to_string();
     let strain_name = &asmbly_report["checkmInfo"]["checkmMarkerSet"].to_string();
@@ -139,7 +159,7 @@ fn mass_seq_shear_amp(vec_of_seqs: Vec<(String,String)>,
 
   metafile_line_writer(&out_metafile, chr_name, &cellid_hashnum, &copy_number, &num_of_reads, strain_name,);
 }
-write_chrom_to_tirp_line(vec_of_seqs, output_file, &seq_report, &cellid_hashnum,)
+write_chrom_to_tirp_line(vec_of_seqs.to_vec(), output_file, &seq_report, &cellid_hashnum,)
                    }
 
 fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
@@ -156,7 +176,8 @@ fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
   // Make r1 and r2, cols of idx 4 and 5
   let r1 = &fragment[..150];
   // Reverses fragment and complements the 150 bases via a HashMap
-  let r2 = &fragment.chars().rev().collect::<String>()[..150].chars().map(|b|{base_comp.get(&b).copied().unwrap_or('N')}).collect::<String>();
+  let r2 = &fragment[fragment.len()-150..fragment.len()].chars().rev().map(|b|{base_comp.get(&b).copied().unwrap_or('N')}).collect::<String>();
+
   // q1 and q2 (colidx 6 to 7) will point to phred_score and last col is a blankspace
   let out_str_line = format!("cell#{:06}\t1\t1\t{}\t{}\t{}\t{}\t \n", cellid_hashnum, r1, r2, &phred_score, &phred_score);
   let _ = output_file.write_all(out_str_line.as_bytes()).expect("Problem with writing tirp data content");

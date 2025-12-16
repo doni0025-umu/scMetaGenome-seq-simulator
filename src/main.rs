@@ -5,13 +5,17 @@ use std::fs;
 use std::env;
 use std::fs::File;
 use std::fs::ReadDir;
-use json::JsonValue;
 use rand::{rng, Rng};
 use rand_distr::{Normal, Distribution, Poisson};
 use std::io::Write;
 use json;
+use std::fs::DirEntry;
 
-
+struct Bactdatafromfasta <'a>{
+  fasta_as_vec_hashmap: Vec<(String,HashMap<&'a str,String>)>,
+  strain_name: String,
+  assembly_name: String,
+}
 
 struct CellidHashnum {
     id_counter: usize
@@ -21,9 +25,7 @@ impl CellidHashnum {
     fn count(&mut self) -> () {
         self.id_counter = self.id_counter + 1;
     }
-
 }
-
 
 fn main() -> std::io::Result<()> {
     // Preamble for parse fasta
@@ -55,48 +57,21 @@ fn main() -> std::io::Result<()> {
     };
 
     for entry in dir_genomes {
-
-      let entry_path = entry.expect("Could not read dir-entry.").path();
-
-      let fasta_string = find_file_in_asmbly(&mut fs::read_dir(&entry_path).unwrap(), ".fna");
-      
-      let seq_report = find_file_in_asmbly(&mut fs::read_dir(&entry_path).unwrap(), "sequence_report.jsonl");
-
-      let asmbly_report = json::parse(&find_file_in_asmbly(&mut fs::read_dir(&entry_path).unwrap(), "assembly_data_report.jsonl")).expect("assembly json could not be parsed");
-      
+      let bact_entry = instantiate_bact(entry.expect("Problem with reading entry!"));
       // Function (all things for an entry so it is loaded and ready) -> <HashMap(PathBuf, HashMap(String, ))
-
-      let num_bacteria = (&metagenome_json[&asmbly_report["currentAccession"].to_string()].to_string()).parse::<usize>().unwrap();
-
-      println!("{}",num_bacteria);
-
-      
-      let fna_to_vec  = parse_fasta(fasta_string);
-
+      let num_bacteria = (&metagenome_json[&bact_entry.assembly_name].to_string()).parse::<usize>().expect("Could not convert into usize.");
       for _ in 0..num_bacteria {
         // Function calls
-        mass_seq_shear_amp(&fna_to_vec, min_len, max_len, fragm_per_bp, frag_len_distr, &mut output_file, &base_comp_prea, &phred_score_prea, cellid_hashnum.id_counter, &out_metafile, poi, &seq_report, &asmbly_report);
-        cellid_hashnum.count();
+        read_simulator(&bact_entry, min_len, max_len, fragm_per_bp, frag_len_distr, &mut output_file, &base_comp_prea, &phred_score_prea, cellid_hashnum.id_counter, &out_metafile, poi);
+        cellid_hashnum.count()
       }
     }
     Ok(())
     }
 
-fn parse_fasta(file: String) -> Vec<(String,String)> {
-  // Taken from Reddit (https://www.reddit.com/r/rust/comments/r5je0y/help_parsing_a_fasta_file/) lol
-    let file_vec = file.split(">")         
-      .skip(1) // Ignores first empty split - so the empty "" that happens before the first ">"
-      .map(|s| {
-        let mut lines = s.split("\n");
-        let contig_name = lines.next().unwrap().to_string();
-        let sequence_str = lines.collect::<String>();
-        (contig_name, sequence_str)
-      })
-      .collect::<Vec<(String,String)>>();
-    file_vec
-}
 
-fn mass_seq_shear_amp(vec_of_seqs: &Vec<(String,String)>,
+// Simulation function
+fn read_simulator(bact_entry: &Bactdatafromfasta,
                     min_len: usize,
                     max_len: usize, 
                     frag_per_bp: f64, 
@@ -107,8 +82,6 @@ fn mass_seq_shear_amp(vec_of_seqs: &Vec<(String,String)>,
                     cellid_hashnum: usize,
                     out_metafile: &File,
                     poi: Poisson<f64>,
-                    seq_report: &String,
-                    asmbly_report: &JsonValue,
                 ) -> () {
   // Meant to take a (heading, seq) tuple and give the heading coupled with digested fragments (random substrings) stored in a Vectors with string elements.
   // Each sample should have equal amounts of sequencing depth. That SHOULD correspond to the number of times looped over a specific genome(?)
@@ -118,18 +91,15 @@ fn mass_seq_shear_amp(vec_of_seqs: &Vec<(String,String)>,
   // NOTE: Here, we are starting from after adapter trimming giving us our reads that are ONLY from the sample dna sequence.
 
 
-  for (idx_in_fasta, (contig_name, sequence_str)) in vec_of_seqs.clone().into_iter().enumerate() {
-    let seq_len = sequence_str.len();
-    let refseq_acc = contig_name.split_whitespace().next().expect("REASON");
-    let seq_report = json::parse(&seq_report.lines().filter(|line| line.contains(refseq_acc)).next().unwrap().to_string()).unwrap();
+  for (idx_in_fasta, (contig_name, contig_hashmap)) in &mut <Vec<(std::string::String, HashMap<&str, std::string::String>)> as Clone>::clone(&bact_entry.fasta_as_vec_hashmap).into_iter().enumerate() {
+    let seq_len = contig_hashmap["contig_seq_str"].len();
 
-    let chr_name = &mut seq_report["assignedMoleculeLocationType"].to_string();
-    let strain_name = &asmbly_report["checkmInfo"]["checkmMarkerSet"].to_string();
     // Decide the Copy Number via poission and some valid meta knowledge
-    let copy_number = if chr_name == "Chromosome" {1 as usize} else {poi.sample(&mut rand::rng()) as usize};
+    let copy_number = if contig_hashmap["chr_name"] == "Chromosome" {1 as usize} else {poi.sample(&mut rand::rng()) as usize};
+    let mut chr_name = contig_hashmap.get("chr_name").unwrap().clone();
     chr_name.push_str(&format!("{}", idx_in_fasta));
 
-    let num_of_reads = copy_number*(frag_per_bp*(sequence_str.len() as f64)).floor() as usize;
+    let num_of_reads = copy_number*(frag_per_bp*(seq_len as f64)).floor() as usize;
     for _ in 1..=num_of_reads {  //125000 would roughly be equal to 50 Megabits of DNA string and 1 000 000 will roughly equal 50 MB of DNA string (in UTF-8 encoding).
       let start_seq_idx: usize = rand::rng().random_range(0..=seq_len);
       // Loop to ensure fragment is within length limits
@@ -144,24 +114,22 @@ fn mass_seq_shear_amp(vec_of_seqs: &Vec<(String,String)>,
       // Ensure circular chromosome property for sequence
       if &start_seq_idx + &fragment_len > seq_len {
         let mut fragment = String::new();
-        fragment.push_str(&sequence_str[start_seq_idx..]);
-        fragment.push_str(&sequence_str[..(start_seq_idx+fragment_len-seq_len)]);
+        fragment.push_str(&contig_hashmap["contig_seq_str"][start_seq_idx..]);
+        fragment.push_str(&contig_hashmap["contig_seq_str"][..(start_seq_idx+fragment_len-seq_len)]);
         format_and_write_to_tirp_line((&contig_name, &fragment), &output_file, &base_comp, &phred_score, &cellid_hashnum);
       } else {
-        let fragment = sequence_str[start_seq_idx..(&start_seq_idx+&fragment_len)].to_string();
-        format_and_write_to_tirp_line((&contig_name, &fragment), &output_file, &base_comp, &phred_score, &cellid_hashnum);
+        let fragment = contig_hashmap["contig_seq_str"][start_seq_idx..(&start_seq_idx+&fragment_len)].to_string();
+        format_and_write_to_tirp_line((&contig_name, &fragment), &output_file, &base_comp, &phred_score, &cellid_hashnum,);
       }
 
   }
   // Write info out to the metafile
-
-
-
-  metafile_line_writer(&out_metafile, chr_name, &cellid_hashnum, &copy_number, &num_of_reads, strain_name,);
+  metafile_line_writer(&out_metafile, &chr_name, &cellid_hashnum, &copy_number, &num_of_reads, &bact_entry.strain_name,);
 }
-write_chrom_to_tirp_line(vec_of_seqs.to_vec(), output_file, &seq_report, &cellid_hashnum,)
+write_chrom_to_tirp_line(&bact_entry, output_file, &cellid_hashnum,)
                    }
 
+// Writer functions
 fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
                                 mut output_file: &File, 
                                 base_comp: &HashMap<char,char>, 
@@ -183,30 +151,16 @@ fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
   let _ = output_file.write_all(out_str_line.as_bytes()).expect("Problem with writing tirp data content");
     
 }
-
-fn write_chrom_to_tirp_line(vec_of_seqs: Vec<(String,String)>,
+fn write_chrom_to_tirp_line(bact_entry: &Bactdatafromfasta,
                                 output_file: &mut File,
-                                seq_report: &String,
                                 cellid_hashnum: &usize,) -> () {
   // Purpose is to use the simulated fragments, reformat them to reads and write to a .tirp file.
   // --Thinking that maybe using the identifier as the cell-id?
-  let seq_report = seq_report.split("\n").collect::<Vec<&str>>();
-  for (contig_name, seq) in vec_of_seqs {
-    for line in &seq_report {
-      if line.contains(contig_name.split_whitespace().next().unwrap()) {
-        let seq_report_json = json::parse(line).unwrap();
-        if seq_report_json["refseqAccession"] == contig_name.split_whitespace().next().unwrap() && seq_report_json["assignedMoleculeLocationType"] == "Chromosome" {
-            let out_str_line = format!("cell#{:06}_ref\t1\t1\t{}\t\t{}\t\t \n", cellid_hashnum, seq, (0..seq.len()).map(|_| "F").collect::<String>());
-            let _ = output_file.write_all(out_str_line.as_bytes()).expect("Problem with writing tirp data content");
+  let seq = &bact_entry.fasta_as_vec_hashmap.clone().into_iter().filter(|(_v,hm)| hm["chr_name"] == "Chromosome").next().unwrap().1.get("contig_seq_str").unwrap().to_string();
+  let out_str_line = format!("cell#{:06}_chromref\t1\t1\t{}\t\t{}\t\t \n", cellid_hashnum, seq, (0..seq.len()).map(|_| "F").collect::<String>());
+  let _ = output_file.write_all(out_str_line.as_bytes()).expect("Problem with writing tirp data content");
           
         }
-      }
-    }
-  }
-
-    
-}
-
 fn metafile_line_writer(mut out_metafile: &File,
                         chr_name: &String,
                         cellid_hashnum: &usize,
@@ -223,7 +177,39 @@ fn metafile_line_writer(mut out_metafile: &File,
     println!("Metaline for cell#{:06} written!", cellid_hashnum);
 }
 
+// Source files setup functions
+fn instantiate_bact(entry:DirEntry) -> Bactdatafromfasta<'static> {
+      
+      let entry_path = entry.path();
+
+      let seq_report = find_file_in_asmbly(&mut fs::read_dir(&entry_path).unwrap(), "sequence_report.jsonl");
+
+      let asmbly_report = json::parse(&find_file_in_asmbly(&mut fs::read_dir(&entry_path).unwrap(), "assembly_data_report.jsonl")).expect("assembly json could not be parsed");
+
+      let bactfromfasta = Bactdatafromfasta{
+        fasta_as_vec_hashmap: parse_fasta(find_file_in_asmbly(&mut fs::read_dir(&entry_path).unwrap(), ".fna"), seq_report),
+        strain_name: asmbly_report["checkmInfo"]["checkmMarkerSet"].to_string(),
+        assembly_name: asmbly_report["currentAccession"].to_string(),
+      };
+bactfromfasta
+}
 fn find_file_in_asmbly(assembly_dir: &mut ReadDir, f_name_pat: &str) -> String {
     let res = fs::read_to_string(assembly_dir.find(|f| f.as_ref().unwrap().file_name().into_string().unwrap().ends_with(f_name_pat)).unwrap().expect("File could not be opened").path()).expect("file with ending {f_name_pat} could not be read!");
     return res;
+}
+fn parse_fasta<'a>(file: String, seq_report: String) -> Vec<(String,HashMap<&'a str,String>)> {
+  // Taken from Reddit (https://www.reddit.com/r/rust/comments/r5je0y/help_parsing_a_fasta_file/) lol
+    let file_vec = file.split(">")         
+      .skip(1) // Ignores first empty split - so the empty "" that happens before the first ">"
+      .map(|s| {
+        let mut lines = s.split("\n");
+        let contig_name = lines.next().unwrap().to_string();
+        let mut contig_hashmap = HashMap::from([("contig_seq_str",lines.collect::<String>()), ("refSeqAccession", contig_name.split_whitespace().next().unwrap().to_string())]);
+        let json_data = json::parse(&seq_report.lines().filter(|line| line.contains(contig_hashmap.get("refSeqAccession").unwrap())).next().unwrap()).expect(&format!("Not able to parse seqreport for contig ****{}****.", contig_name));
+        contig_hashmap.insert("chr_name", json_data["assignedMoleculeLocationType"].to_string(),);
+
+        (contig_name, contig_hashmap)
+      })
+      .collect::<Vec<(String,HashMap<&str,String>)>>();
+    file_vec
 }

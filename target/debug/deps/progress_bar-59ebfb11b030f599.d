@@ -1,0 +1,9 @@
+/Users/user_douglas/Desktop/rust-project-simulation/target/debug/deps/progress_bar-59ebfb11b030f599.d: /Users/user_douglas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/progress_bar-1.4.0/src/lib.rs /Users/user_douglas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/progress_bar-1.4.0/src/pb.rs /Users/user_douglas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/progress_bar-1.4.0/src/style.rs /Users/user_douglas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/progress_bar-1.4.0/src/global.rs /Users/user_douglas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/progress_bar-1.4.0/src/../README.md
+
+/Users/user_douglas/Desktop/rust-project-simulation/target/debug/deps/libprogress_bar-59ebfb11b030f599.rmeta: /Users/user_douglas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/progress_bar-1.4.0/src/lib.rs /Users/user_douglas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/progress_bar-1.4.0/src/pb.rs /Users/user_douglas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/progress_bar-1.4.0/src/style.rs /Users/user_douglas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/progress_bar-1.4.0/src/global.rs /Users/user_douglas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/progress_bar-1.4.0/src/../README.md
+
+/Users/user_douglas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/progress_bar-1.4.0/src/lib.rs:
+/Users/user_douglas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/progress_bar-1.4.0/src/pb.rs:
+/Users/user_douglas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/progress_bar-1.4.0/src/style.rs:
+/Users/user_douglas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/progress_bar-1.4.0/src/global.rs:
+/Users/user_douglas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/progress_bar-1.4.0/src/../README.md:

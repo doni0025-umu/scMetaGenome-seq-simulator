@@ -1,6 +1,6 @@
-out.tirp
-out.tirp.gz
-out_meta.tsv
+*.tirp
+*.tirp.gz
+*.tsv
 fasta-files/*
 ncbi_dataset/*
 out-metas/*

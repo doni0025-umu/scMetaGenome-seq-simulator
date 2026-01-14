@@ -5,7 +5,7 @@ timestamp=$(date +%s)
 
 # Filenames
 
-outname="out1_"
+outname="out.1"
 outname_meta=$outname"_meta.tsv"
 
 # Args are name of output file, name of output metafile and lastly the number of bytes for chromosome-ref chunklength.

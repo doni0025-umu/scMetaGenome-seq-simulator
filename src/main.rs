@@ -140,7 +140,7 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
   // Write info out to the metafile
   metafile_line_writer(&out_metafile, &chr_name, &cellid_hashnum, &copy_number, &num_of_reads, &bact_entry.strain_name,);
 }
-write_chrom_to_tirp_line(&bact_entry, output_file, &cellid_hashnum, bytes_chrom_r1)
+write_chrom_to_tirp_line(&bact_entry, output_file, &cellid_hashnum, bytes_chrom_r1, base_comp)
                    }
 
 // Writer functions
@@ -168,18 +168,19 @@ fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
 fn write_chrom_to_tirp_line(bact_entry: &Bactdatafromfasta,
                                 output_file: &mut File,
                                 cellid_hashnum: &usize,
-                                bytes_chrom_r1: usize,) -> () {
+                                bytes_chrom_r1: usize,
+                                base_comp: &HashMap<char,char>) -> () {
   // Purpose is to use the simulated fragments, reformat them to reads and write to a .tirp file.
   // --Thinking that maybe using the identifier as the cell-id?
   let full_seq = &bact_entry.fasta_as_vec_hashmap.clone().into_iter().filter(|(_v,hm)| hm["chr_name"] == "Chromosome").next().unwrap().1.get("contig_seq_str").unwrap().to_string();
 
-  let num_chunks = (full_seq.len() / bytes_chrom_r1) + 1;
-
-  for chunk_idx in 0..=num_chunks {
+  for chunk_idx in 0..=((full_seq.len() / bytes_chrom_r1) + 1) {
     let seq = 
       if (chunk_idx+1)*bytes_chrom_r1-(31*chunk_idx) >= full_seq.len() {&full_seq[chunk_idx*bytes_chrom_r1-(chunk_idx*31)..]}
       else {&full_seq[chunk_idx*bytes_chrom_r1-(31*chunk_idx)..(chunk_idx+1)*bytes_chrom_r1-(chunk_idx*31)]};
-    let out_str_line = format!("cell#{:06}_chromref\t1\t1\t{}\t\t{}\t\t \n", cellid_hashnum, seq, (0..seq.len()).map(|_| "F").collect::<String>());
+
+    let r2 = &seq.chars().rev().map(|b|{base_comp.get(&b).copied().unwrap_or('N')}).collect::<String>();
+    let out_str_line = format!("cell#{:06}_chromref\t1\t1\t{}\t{}\t{}\t{}\t \n", cellid_hashnum, seq, r2, (0..seq.len()).map(|_| "F").collect::<String>(), (0..r2.len()).map(|_| "F").collect::<String>());
     let _ = output_file.write_all(out_str_line.as_bytes()).expect("Problem with writing tirp data content");  
     };
    }

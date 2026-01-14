@@ -4,17 +4,20 @@
 timestamp=$(date +%s)
 
 # Filenames
-outname="out1"
+
+outname="out1_"
 outname_meta=$outname"_meta.tsv"
 
-cargo run $outname.tirp $outname_meta
+# Args are name of output file, name of output metafile and lastly the number of bytes for chromosome-ref chunklength.
+cargo run $outname.tirp $outname_meta 10000
 
 echo ""
 echo "Compressing \"$outname.tirp\" into \"$outname.tirp.gz\"..."
 bgzip -c $outname.tirp > $outname.tirp.gz 
 echo ""
 
-# Below is meant for beagle and running the sim
+#### Below is meant for beagle and running the sim ####################
+#######################################################################
 
 # Meant for the data-dir
 echo "(for beagle) Sending results to /home/douglas/data/sim1"

@@ -5,12 +5,13 @@ use std::fs;
 use std::env;
 use std::fs::File;
 use std::fs::ReadDir;
+use std::time::Duration;
 use rand::{rng, Rng};
 use rand_distr::{Normal, Distribution, Poisson};
 use std::io::Write;
 use json;
 use std::fs::DirEntry;
-use progress_bar::*;
+use indicatif::ProgressBar;
 
 
 struct Bactdatafromfasta <'a>{
@@ -48,6 +49,10 @@ fn main() -> std::io::Result<()> {
     let phred_score_prea = (0..150).map(|_| "F").collect::<String>();
     let base_comp_prea = HashMap::from([('A', 'T'), ('T','A'),('G', 'C'), ('C','G'), ('N', 'N'),]);
 
+    // Preamble for write-chrom-to-tirp
+    let bytes_chrom_r1 = *&args[3].parse::<usize>().unwrap();
+
+
     // Preamble for metafile_line_writer
     let out_metafile_path = &args[2];
     let out_metafile = std::fs::OpenOptions::new().write(true).truncate(true).create(true).open(out_metafile_path).expect("This path could NOT be used as Metafile output path. Maybe dir does not exist?");
@@ -64,7 +69,7 @@ fn main() -> std::io::Result<()> {
       let num_bacteria = (&metagenome_json[&bact_entry.assembly_name].to_string()).parse::<usize>().expect("Could not convert into usize.");
       for _ in 0..num_bacteria {
         // Function calls
-        read_simulator(&bact_entry, min_len, max_len, fragm_per_bp, frag_len_distr, &mut output_file, &base_comp_prea, &phred_score_prea, cellid_hashnum.id_counter, &out_metafile, poi);
+        read_simulator(&bact_entry, min_len, max_len, fragm_per_bp, frag_len_distr, &mut output_file, &base_comp_prea, &phred_score_prea, cellid_hashnum.id_counter, &out_metafile, poi, bytes_chrom_r1);
         cellid_hashnum.count()
       }
     }
@@ -84,6 +89,7 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
                     cellid_hashnum: usize,
                     out_metafile: &File,
                     poi: Poisson<f64>,
+                    bytes_chrom_r1: usize
                 ) -> () {
   // Meant to take a (heading, seq) tuple and give the heading coupled with digested fragments (random substrings) stored in a Vectors with string elements.
   // Each sample should have equal amounts of sequencing depth. That SHOULD correspond to the number of times looped over a specific genome(?)
@@ -102,10 +108,9 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
     chr_name.push_str(&format!("{}", idx_in_fasta));
 
     let num_of_reads = copy_number*(frag_per_bp*(seq_len as f64)).floor() as usize;
-    let tenpercent_of_reads = (0.1*(num_of_reads as f64)).floor() as usize;
-    init_progress_bar(10);
-    set_progress_bar_action("Simulating", Color::Blue, Style::Bold);
-    for i in 1..=num_of_reads {  //125000 would roughly be equal to 50 Megabits of DNA string and 1 000 000 will roughly equal 50 MB of DNA string (in UTF-8 encoding).
+    let bar = ProgressBar::new_spinner();
+    bar.enable_steady_tick(Duration::from_millis(100));
+    for _ in 1..=num_of_reads {  //125000 would roughly be equal to 50 Megabits of DNA string and 1 000 000 will roughly equal 50 MB of DNA string (in UTF-8 encoding).
       let start_seq_idx: usize = rand::rng().random_range(0..=seq_len);
       // Loop to ensure fragment is within length limits
       let fragment_len: usize = loop {
@@ -125,19 +130,17 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
       } else {
         let fragment = contig_hashmap["contig_seq_str"][start_seq_idx..(&start_seq_idx+&fragment_len)].to_string();
         format_and_write_to_tirp_line((&contig_name, &fragment), &output_file, &base_comp, &phred_score, &cellid_hashnum,);
-        if i % tenpercent_of_reads == 0 {
-           inc_progress_bar();
-        }
       }
 
   }
-  print_progress_bar_info("Success", &format!("Contig reads for cell#{:06} generated!", cellid_hashnum), Color::Green, Style::Bold);
-  finalize_progress_bar();
+  bar.finish_and_clear();
+  println!("Contig reads for cell#{:06} generated!", cellid_hashnum);
+  
 
   // Write info out to the metafile
   metafile_line_writer(&out_metafile, &chr_name, &cellid_hashnum, &copy_number, &num_of_reads, &bact_entry.strain_name,);
 }
-write_chrom_to_tirp_line(&bact_entry, output_file, &cellid_hashnum,)
+write_chrom_to_tirp_line(&bact_entry, output_file, &cellid_hashnum, bytes_chrom_r1)
                    }
 
 // Writer functions
@@ -164,14 +167,23 @@ fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
 }
 fn write_chrom_to_tirp_line(bact_entry: &Bactdatafromfasta,
                                 output_file: &mut File,
-                                cellid_hashnum: &usize,) -> () {
+                                cellid_hashnum: &usize,
+                                bytes_chrom_r1: usize,) -> () {
   // Purpose is to use the simulated fragments, reformat them to reads and write to a .tirp file.
   // --Thinking that maybe using the identifier as the cell-id?
-  let seq = &bact_entry.fasta_as_vec_hashmap.clone().into_iter().filter(|(_v,hm)| hm["chr_name"] == "Chromosome").next().unwrap().1.get("contig_seq_str").unwrap().to_string();
-  let out_str_line = format!("cell#{:06}_chromref\t1\t1\t{}\t\t{}\t\t \n", cellid_hashnum, seq, (0..seq.len()).map(|_| "F").collect::<String>());
-  let _ = output_file.write_all(out_str_line.as_bytes()).expect("Problem with writing tirp data content");
-          
-        }
+  let full_seq = &bact_entry.fasta_as_vec_hashmap.clone().into_iter().filter(|(_v,hm)| hm["chr_name"] == "Chromosome").next().unwrap().1.get("contig_seq_str").unwrap().to_string();
+
+  let num_chunks = (full_seq.len() / bytes_chrom_r1) + 1;
+
+  for chunk_idx in 0..=num_chunks {
+    let seq = 
+      if (chunk_idx+1)*bytes_chrom_r1-(31*chunk_idx) >= full_seq.len() {&full_seq[chunk_idx*bytes_chrom_r1-(chunk_idx*31)..]}
+      else {&full_seq[chunk_idx*bytes_chrom_r1-(31*chunk_idx)..(chunk_idx+1)*bytes_chrom_r1-(chunk_idx*31)]};
+    let out_str_line = format!("cell#{:06}_chromref\t1\t1\t{}\t\t{}\t\t \n", cellid_hashnum, seq, (0..seq.len()).map(|_| "F").collect::<String>());
+    let _ = output_file.write_all(out_str_line.as_bytes()).expect("Problem with writing tirp data content");  
+    };
+   }
+
 fn metafile_line_writer(mut out_metafile: &File,
                         chr_name: &String,
                         cellid_hashnum: &usize,

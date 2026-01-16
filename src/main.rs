@@ -39,7 +39,7 @@ fn main() -> std::io::Result<()> {
     // Preamble for mass_shear_seq_amp
     let min_len: usize = 250;
     let max_len: usize = 550;
-    let fragm_per_bp: f64 = 0.01;
+    let fragm_per_bp: f64 = 0.002;
     let frag_len_distr: Normal<f32> = Normal::new(400.0, 50.0).unwrap();
     let poi = Poisson::new(13.0).unwrap();
 
@@ -110,7 +110,8 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
     let num_of_reads = copy_number*(frag_per_bp*(seq_len as f64)).floor() as usize;
     let bar = ProgressBar::new_spinner();
     bar.enable_steady_tick(Duration::from_millis(100));
-    for _ in 1..=num_of_reads {  //125000 would roughly be equal to 50 Megabits of DNA string and 1 000 000 will roughly equal 50 MB of DNA string (in UTF-8 encoding).
+    for _ in 1..=num_of_reads {  
+      //125000 would roughly be equal to 50 Megabits of DNA string and 1 000 000 will roughly equal 50 MB of DNA string (in UTF-8 encoding).
       let start_seq_idx: usize = rand::rng().random_range(0..=seq_len);
       // Loop to ensure fragment is within length limits
       let fragment_len: usize = loop {
@@ -156,12 +157,12 @@ fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
   let fragment = tup_contigname_fragment.1;
   // Colidx 1 to 3 is nonsense added in written string UPDATE: I see it is 1 to 2 now.
   // Make r1 and r2, cols of idx 4 and 5
-  let r1 = &fragment[..150];
-  // Reverses fragment and complements the 150 bases via a HashMap
-  let r2 = &fragment[fragment.len()-150..fragment.len()].chars().rev().map(|b|{base_comp.get(&b).copied().unwrap_or('N')}).collect::<String>();
-
   // q1 and q2 (colidx 6 to 7) will point to phred_score and last col is a blankspace
-  let out_str_line = format!("cell#{:06}\t1\t1\t{}\t{}\t{}\t{}\t \n", cellid_hashnum, r1, r2, &phred_score, &phred_score);
+  let out_str_line = format!("cell#{:06}\t1\t1\t{}\t{}\t{}\t{}\t \n", 
+                                      cellid_hashnum, 
+                                      &fragment[..150], 
+                                      &fragment[fragment.len()-150..fragment.len()].chars().rev().map(|b|{base_comp.get(&b).copied().unwrap_or('N')}).collect::<String>(),
+                                      &phred_score, &phred_score);
   let _ = output_file.write_all(out_str_line.as_bytes()).expect("Problem with writing tirp data content");
     
 }
@@ -178,13 +179,16 @@ fn write_chrom_to_tirp_line(bact_entry: &Bactdatafromfasta,
     let seq = 
       if (chunk_idx+1)*bytes_chrom_r1-(31*chunk_idx) >= full_seq.len() {&full_seq[chunk_idx*bytes_chrom_r1-(chunk_idx*31)..]}
       else {&full_seq[chunk_idx*bytes_chrom_r1-(31*chunk_idx)..(chunk_idx+1)*bytes_chrom_r1-(chunk_idx*31)]};
-
-    let r2 = &seq.chars().rev().map(|b|{base_comp.get(&b).copied().unwrap_or('N')}).collect::<String>();
-    let out_str_line = format!("cell#{:06}_chromref\t1\t1\t{}\t{}\t{}\t{}\t \n", cellid_hashnum, seq, r2, (0..seq.len()).map(|_| "F").collect::<String>(), (0..r2.len()).map(|_| "F").collect::<String>());
+    let out_str_line = format!("cell#{:06}_chromref\t1\t1\t{}\t{}\t{}\t{}\t \n", 
+                                                                                        cellid_hashnum, 
+                                                                                        seq, 
+                                                                                        &seq.chars().rev().map(|b|{base_comp.get(&b).copied().unwrap_or('N')}).collect::<String>(), 
+                                                                                        (0..seq.len()).map(|_| "F").collect::<String>(), 
+                                                                                        (0..seq.len()).map(|_| "F").collect::<String>());
     let _ = output_file.write_all(out_str_line.as_bytes()).expect("Problem with writing tirp data content");  
     };
    }
-
+   
 fn metafile_line_writer(mut out_metafile: &File,
                         chr_name: &String,
                         cellid_hashnum: &usize,

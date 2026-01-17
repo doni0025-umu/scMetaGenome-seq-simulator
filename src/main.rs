@@ -8,7 +8,7 @@ use std::fs::ReadDir;
 use std::time::Duration;
 use rand::{rng, Rng};
 use rand_distr::{Normal, Distribution, Poisson};
-use std::io::Write;
+use std::io::{BufWriter,Write};
 use json;
 use std::fs::DirEntry;
 use indicatif::ProgressBar;
@@ -45,7 +45,7 @@ fn main() -> std::io::Result<()> {
 
     // Preamble for write-to-tirp
     let out_path = &args[1];
-    let mut output_file  = std::fs::OpenOptions::new().write(true).truncate(true).create(true).open(out_path).expect("This path could NOT be used as output path. Maybe dir does not exist?");
+    let mut output_file  = BufWriter::new(std::fs::OpenOptions::new().write(true).truncate(true).create(true).open(out_path).expect("This path could NOT be used as output path. Maybe dir does not exist?"));
     let phred_score_prea = (0..150).map(|_| "F").collect::<String>();
     let base_comp_prea = HashMap::from([('A', 'T'), ('T','A'),('G', 'C'), ('C','G'), ('N', 'N'),]);
 
@@ -54,8 +54,7 @@ fn main() -> std::io::Result<()> {
 
 
     // Preamble for metafile_line_writer
-    let out_metafile_path = &args[2];
-    let out_metafile = std::fs::OpenOptions::new().write(true).truncate(true).create(true).open(out_metafile_path).expect("This path could NOT be used as Metafile output path. Maybe dir does not exist?");
+    let mut out_metafile = BufWriter::new(std::fs::OpenOptions::new().write(true).truncate(true).create(true).open(&args[2]).expect("This path could NOT be used as Metafile output path. Maybe dir does not exist?"));
 
     let metagenome_json  = json::parse(&fs::read_to_string("run-setup.json").expect("could not read run-setup.json!")).expect("Problem with run-setup.json");
 
@@ -69,10 +68,12 @@ fn main() -> std::io::Result<()> {
       let num_bacteria = (&metagenome_json[&bact_entry.assembly_name].to_string()).parse::<usize>().expect("Could not convert into usize.");
       for _ in 0..num_bacteria {
         // Function calls
-        read_simulator(&bact_entry, min_len, max_len, fragm_per_bp, frag_len_distr, &mut output_file, &base_comp_prea, &phred_score_prea, cellid_hashnum.id_counter, &out_metafile, poi, bytes_chrom_r1);
+        read_simulator(&bact_entry, min_len, max_len, fragm_per_bp, frag_len_distr, &mut output_file, &base_comp_prea, &phred_score_prea, cellid_hashnum.id_counter, &mut out_metafile, poi, bytes_chrom_r1);
         cellid_hashnum.count()
       }
     }
+    output_file.flush().expect("Problem with flushing output tirp file!");
+    out_metafile.flush().expect("Problem with flushing output metafile!");
     Ok(())
     }
 
@@ -83,11 +84,11 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
                     max_len: usize, 
                     frag_per_bp: f64, 
                     frag_len_distr: Normal<f32>,
-                    output_file: &mut File, 
+                    output_file: &mut BufWriter<File>, 
                     base_comp: &HashMap<char,char>,
                     phred_score: &String,
                     cellid_hashnum: usize,
-                    out_metafile: &File,
+                    out_metafile: &mut BufWriter<File>,
                     poi: Poisson<f64>,
                     bytes_chrom_r1: usize
                 ) -> () {
@@ -127,10 +128,10 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
         let mut fragment = String::new();
         fragment.push_str(&contig_hashmap["contig_seq_str"][start_seq_idx..]);
         fragment.push_str(&contig_hashmap["contig_seq_str"][..(start_seq_idx+fragment_len-seq_len)]);
-        format_and_write_to_tirp_line((&contig_name, &fragment), &output_file, &base_comp, &phred_score, &cellid_hashnum);
+        format_and_write_to_tirp_line((&contig_name, &fragment), output_file, &base_comp, &phred_score, &cellid_hashnum);
       } else {
         let fragment = contig_hashmap["contig_seq_str"][start_seq_idx..(&start_seq_idx+&fragment_len)].to_string();
-        format_and_write_to_tirp_line((&contig_name, &fragment), &output_file, &base_comp, &phred_score, &cellid_hashnum,);
+        format_and_write_to_tirp_line((&contig_name, &fragment), output_file, &base_comp, &phred_score, &cellid_hashnum,);
       }
 
   }
@@ -139,14 +140,15 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
   
 
   // Write info out to the metafile
-  metafile_line_writer(&out_metafile, &chr_name, &cellid_hashnum, &copy_number, &num_of_reads, &bact_entry.strain_name,);
+  metafile_line_writer(out_metafile, &chr_name, &cellid_hashnum, &copy_number, &num_of_reads, &bact_entry.strain_name,);
 }
-write_chrom_to_tirp_line(&bact_entry, output_file, &cellid_hashnum, bytes_chrom_r1, base_comp)
+write_chrom_to_tirp_line(&bact_entry, output_file, &cellid_hashnum, bytes_chrom_r1, base_comp);
+
                    }
 
 // Writer functions
 fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
-                                mut output_file: &File, 
+                                output_file: &mut BufWriter<File>, 
                                 base_comp: &HashMap<char,char>, 
                                 phred_score: &String,
                                 cellid_hashnum: &usize,) -> () {
@@ -164,10 +166,11 @@ fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
                                       &fragment[fragment.len()-150..fragment.len()].chars().rev().map(|b|{base_comp.get(&b).copied().unwrap_or('N')}).collect::<String>(),
                                       &phred_score, &phred_score);
   let _ = output_file.write_all(out_str_line.as_bytes()).expect("Problem with writing tirp data content");
+  
     
 }
 fn write_chrom_to_tirp_line(bact_entry: &Bactdatafromfasta,
-                                output_file: &mut File,
+                                output_file: &mut BufWriter<File>,
                                 cellid_hashnum: &usize,
                                 bytes_chrom_r1: usize,
                                 base_comp: &HashMap<char,char>) -> () {
@@ -189,7 +192,7 @@ fn write_chrom_to_tirp_line(bact_entry: &Bactdatafromfasta,
     };
    }
    
-fn metafile_line_writer(mut out_metafile: &File,
+fn metafile_line_writer(out_metafile: &mut BufWriter<File>,
                         chr_name: &String,
                         cellid_hashnum: &usize,
                         copy_number: &usize,

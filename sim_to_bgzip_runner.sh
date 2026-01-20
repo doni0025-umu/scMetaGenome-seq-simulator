@@ -12,7 +12,7 @@ cargo run $outname.1.tirp $outname_meta 10000
 
 echo ""
 echo "Compressing \""$outname".1.tirp\" into \""$outname".1.tirp.gz\"..."
-bgzip $outname.1.tirp
+bgzip $outname.1.tirp 
 echo ""
 
 #######################################################################

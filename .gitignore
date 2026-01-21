@@ -4,4 +4,4 @@
 fasta-files/*
 ncbi_dataset/*
 out-metas/*
-chrom_vs_plasmid_testdir/*
+test_heap/*

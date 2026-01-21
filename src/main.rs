@@ -73,7 +73,7 @@ fn main() -> std::io::Result<()> {
       let num_bacteria = (&metagenome_json[&bact_entry.assembly_name].to_string()).parse::<usize>().expect("Could not convert into usize.");
       for _ in 0..num_bacteria {
         // Function calls
-        read_simulator(&bact_entry, frag_len_distr, &mut output_file, BASE_COMP_LUT, &phred_score_prea, cellid_hashnum.id_counter, &mut out_metafile, poi, bytes_chrom_r1);
+        read_simulator(&bact_entry, frag_len_distr, &mut output_file, &phred_score_prea, cellid_hashnum.id_counter, &mut out_metafile, poi, bytes_chrom_r1);
         cellid_hashnum.count()
       }
     }
@@ -85,8 +85,7 @@ fn main() -> std::io::Result<()> {
 // Simulation function
 fn read_simulator(bact_entry: &Bactdatafromfasta,
                     frag_len_distr: Normal<f32>,
-                    output_file: &mut BufWriter<File>, 
-                    base_comp_lut_var: [u8; 256],
+                    output_file: &mut BufWriter<File>,
                     phred_score: &String,
                     cellid_hashnum: usize,
                     out_metafile: &mut BufWriter<File>,
@@ -109,7 +108,7 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
     let mut chr_name = contig_hashmap.get("chr_name").unwrap().clone();
     chr_name.push_str(&format!("{}", idx_in_fasta));
 
-    // Float serves as "fragment per base pair".
+    // Float serves as "fragment per base pair". ############# CHANGE IF NEEDED OR TUNED #############
     let num_of_reads = copy_number*(0.002*(seq_len as f64)).floor() as usize;
 
     // Progress bar setup
@@ -135,10 +134,10 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
         let mut fragment = String::new();
         fragment.push_str(&contig_hashmap["contig_seq_str"][start_seq_idx..]);
         fragment.push_str(&contig_hashmap["contig_seq_str"][..(start_seq_idx+fragment_len-seq_len)]);
-        format_and_write_to_tirp_line((&contig_name, &fragment), output_file, base_comp_lut_var, &phred_score, &cellid_hashnum);
+        format_and_write_to_tirp_line((&contig_name, &fragment), output_file, &phred_score, &cellid_hashnum);
       } else {
         let fragment = contig_hashmap["contig_seq_str"][start_seq_idx..(&start_seq_idx+&fragment_len)].to_string();
-        format_and_write_to_tirp_line((&contig_name, &fragment), output_file, base_comp_lut_var, &phred_score, &cellid_hashnum,);
+        format_and_write_to_tirp_line((&contig_name, &fragment), output_file, &phred_score, &cellid_hashnum,);
       }
 
   }
@@ -149,13 +148,12 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
   // Write info out to the metafile
   metafile_line_writer(out_metafile, &chr_name, &cellid_hashnum, &copy_number, &num_of_reads, &bact_entry.strain_name,);
 }
-write_chrom_to_tirp_line(&bact_entry, output_file, &cellid_hashnum, bytes_chrom_r1, BASE_COMP_LUT);
+write_chrom_to_tirp_line(&bact_entry, output_file, &cellid_hashnum, bytes_chrom_r1);
                    }
 
 // Writer functions
 fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
-                                output_file: &mut BufWriter<File>, 
-                                base_comp_lut_var: [u8; 256],
+                                output_file: &mut BufWriter<File>,
                                 phred_score: &String,
                                 cellid_hashnum: &usize,) -> () {
   // Purpose is to use the simulated fragments, reformat them to reads and write to a .tirp file.
@@ -169,7 +167,7 @@ fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
     // Make r1 and r2, cols of idx 4 and 5
   output_file.write_all(tup_contigname_fragment.1[..150].as_bytes()).expect("Problem with writing tirp data content");
   output_file.write_all(b"\t").expect("Problem with writing tirp data content"); 
-  output_file.write_all(String::from_utf8(tup_contigname_fragment.1[tup_contigname_fragment.1.len()-150..tup_contigname_fragment.1.len()].chars().rev().map(|b| base_comp_lut_var[b as usize]).collect::<Vec<u8>>()).unwrap().as_bytes()).expect("Problem with writing tirp data content"); 
+  output_file.write_all(String::from_utf8(tup_contigname_fragment.1[tup_contigname_fragment.1.len()-150..tup_contigname_fragment.1.len()].chars().rev().map(|b| BASE_COMP_LUT[b as usize]).collect::<Vec<u8>>()).unwrap().as_bytes()).expect("Problem with writing tirp data content"); 
   output_file.write_all(b"\t").expect("Problem with writing tirp data content");
   // q1 and q2 (colidx 6 to 7) will point to phred_score and last col is a blankspace
   output_file.write_all(phred_score.as_bytes()).expect("Problem with writing tirp data content");
@@ -182,32 +180,38 @@ fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
 fn write_chrom_to_tirp_line(bact_entry: &Bactdatafromfasta,
                                 output_file: &mut BufWriter<File>,
                                 cellid_hashnum: &usize,
-                                bytes_chrom_r1: usize,
-                                base_comp_lut_var: [u8; 256]) -> () {
+                                bytes_chrom_r1: usize) -> () {
   // Purpose is to use the simulated fragments, reformat them to reads and write to a .tirp file.
   // --Thinking that maybe using the identifier as the cell-id?
-  let full_seq = &bact_entry.fasta_as_vec_hashmap.clone().into_iter().filter(|(_v,hm)| hm["chr_name"] == "Chromosome").next().unwrap().1.get("contig_seq_str").unwrap().to_string();
-  for chunk_idx in 0..=((full_seq.len() / bytes_chrom_r1) + 1) {
-    // Quickout in case of overflow
-    if chunk_idx*bytes_chrom_r1-(chunk_idx*31) >= full_seq.len(){
-      break;
-    }
-    let seq = 
-      if (chunk_idx+1)*bytes_chrom_r1-(31*chunk_idx) >= full_seq.len() {&full_seq[chunk_idx*bytes_chrom_r1-(chunk_idx*31)..]}
-      else {&full_seq[chunk_idx*bytes_chrom_r1-(31*chunk_idx)..(chunk_idx+1)*bytes_chrom_r1-(chunk_idx*31)]};
+  let full_seq = bact_entry.fasta_as_vec_hashmap.clone().into_iter().filter(|(_v,hm)| hm["chr_name"] == "Chromosome").next();
+  match full_seq {
+    None => return (),
+    Some(full_seq) => {
+      let full_seq = full_seq.1.get("contig_seq_str").unwrap().to_string();
+      for chunk_idx in 0..=((full_seq.len() / bytes_chrom_r1) + 1) {
+        // Quickout in case of overflow
+        if chunk_idx*bytes_chrom_r1-(chunk_idx*31) >= full_seq.len(){
+          break;
+        }
+        let seq = 
+          if (chunk_idx+1)*bytes_chrom_r1-(31*chunk_idx) >= full_seq.len() {&full_seq[chunk_idx*bytes_chrom_r1-(chunk_idx*31)..]}
+          else {&full_seq[chunk_idx*bytes_chrom_r1-(31*chunk_idx)..(chunk_idx+1)*bytes_chrom_r1-(chunk_idx*31)]};
 
-    write!(output_file, "cell#{:06}_chromref", cellid_hashnum).expect("Problem with writing tirp data content");
-    output_file.write_all(b"\t1").expect("Problem with writing tirp data content"); 
-    output_file.write_all(b"\t1\t").expect("Problem with writing tirp data content");  
-    output_file.write_all(seq.as_bytes()).expect("Problem with writing tirp data content");
-    output_file.write_all(b"\t").expect("Problem with writing tirp data content");
-    output_file.write_all(String::from_utf8(seq.chars().rev().map(|b| base_comp_lut_var[b as usize]).collect::<Vec<u8>>()).unwrap().as_bytes()).expect("Problem with writing tirp data content"); 
-    output_file.write_all(b"\t").expect("Problem with writing tirp data content");
-    output_file.write_all((0..seq.len()).map(|_| "F").collect::<String>().as_bytes()).expect("Problem with writing tirp data content");
-    output_file.write_all(b"\t").expect("Problem with writing tirp data content");
-    output_file.write_all((0..seq.len()).map(|_| "F").collect::<String>().as_bytes()).expect("Problem with writing tirp data content"); 
-    output_file.write_all(b"\t \n").expect("Problem with writing tirp data content"); 
-    };
+        write!(output_file, "cell#{:06}_chromref", cellid_hashnum).expect("Problem with writing tirp data content");
+        output_file.write_all(b"\t1").expect("Problem with writing tirp data content"); 
+        output_file.write_all(b"\t1\t").expect("Problem with writing tirp data content");  
+        output_file.write_all(seq.as_bytes()).expect("Problem with writing tirp data content");
+        output_file.write_all(b"\t").expect("Problem with writing tirp data content");
+        output_file.write_all(String::from_utf8(seq.chars().rev().map(|b| BASE_COMP_LUT[b as usize]).collect::<Vec<u8>>()).unwrap().as_bytes()).expect("Problem with writing tirp data content"); 
+        output_file.write_all(b"\t").expect("Problem with writing tirp data content");
+        output_file.write_all((0..seq.len()).map(|_| "F").collect::<String>().as_bytes()).expect("Problem with writing tirp data content");
+        output_file.write_all(b"\t").expect("Problem with writing tirp data content");
+        output_file.write_all((0..seq.len()).map(|_| "F").collect::<String>().as_bytes()).expect("Problem with writing tirp data content"); 
+        output_file.write_all(b"\t \n").expect("Problem with writing tirp data content"); 
+        };
+  }
+  };
+
 
 }
    
@@ -242,7 +246,7 @@ fn find_file_in_asmbly(assembly_dir: &mut ReadDir, f_name_pat: &str) -> String {
     let res = fs::read_to_string(assembly_dir.find(|f| f.as_ref().unwrap().file_name().into_string().unwrap().ends_with(f_name_pat)).unwrap().expect("File could not be opened").path()).expect("file with ending {f_name_pat} could not be read!");
     return res;
 }
-fn parse_fasta<'a>(file: String, seq_report: String) -> Vec<(String,HashMap<&'a str,String>)> {
+fn parse_fasta<'a>(file: String, seq_report: String) -> Vec<(String, HashMap<&'a str,String>)> {
   // Taken from Reddit (https://www.reddit.com/r/rust/comments/r5je0y/help_parsing_a_fasta_file/) lol
     let file_vec = file.split(">")         
       .skip(1) // Ignores first empty split - so the empty "" that happens before the first ">"

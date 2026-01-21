@@ -1,38 +1,45 @@
 # Source - https://stackoverflow.com/a
 # Posted by dchakarov
 # Retrieved 2025-12-10, License - CC BY-SA 3.0
-timestamp=$(date +"%y%m%d_%H:%M")
 
-# Filenames
-outname=$timestamp"CHROM_PLASMID_TEST_S_enterica"
-outname_meta=meta_$outname".1.tsv"
+for i in {1..1}
+do
+    timestamp=$(date +"%y%m%d_%H:%M")
 
-# Args are name of output file, name of output metafile and lastly the number of bytes for chromosome-ref chunklength.
-cargo run $outname.1.tirp $outname_meta 10000
+    # Filenames
+    outname=chromvschrom+plas$timestamp
+    outname_meta=meta_$outname".1.tsv"
 
-echo ""
-echo "Compressing \""$outname".1.tirp\" into \""$outname".1.tirp.gz\"..."
-bgzip $outname.1.tirp 
-echo ""
+    # Args are name of output file, name of output metafile and lastly the number of bytes for chromosome-ref chunklength.
+    cargo run $outname.1.tirp $outname_meta 10000
 
-#######################################################################
-#### Below is meant for beagle and running the sim ####################
-#######################################################################
+    echo ""
+    echo "Compressing \""$outname".1.tirp\" into \""$outname".1.tirp.gz\"..."
+    bgzip $outname.1.tirp 
+    echo ""
 
-mkdir ~/data/sim/$outname
-mkdir ~/data/sim/$outname/countsketch_mat.csv
+    #######################################################################
+    #### Below is meant for beagle and running the sim ####################
+    #######################################################################
 
-# Meant for the data-dir
-echo "(for beagle) Sending results to /home/douglas/data/sim"
-mv $outname_meta /home/douglas/data/sim/$outname
-mv $outname.1.tirp.gz /home/douglas/data/sim/$outname
-cp run-setup.json "/home/douglas/data/sim/"$outname"/"$outname"run-setup.json"
-echo ""
+    mkdir ~/data/sim/$outname
+    mkdir ~/data/sim/$outname/countsketch_mat.csv
 
-## Meant for the bascetRoot dir
-#echo "(for beagle) Sending results to /home/douglas/git/zorn"
-#cp $outname_meta /home/douglas/git/zorn
-#cp $outname.tirp /home/douglas/git/zorn
-#cp $outname.tirp.gz /home/douglas/git/zorn
+    # Meant for the data-dir
+    echo "(for beagle) Sending results to /home/douglas/data/sim"
+    mv $outname_meta /home/douglas/data/sim/$outname
+    mv $outname.1.tirp.gz /home/douglas/data/sim/$outname
+    cp run-setup.json "/home/douglas/data/sim/"$outname"/"$outname"run-setup.json"
+    
+    echo ""
 
-Rscript ~/data/sim/proc_data.R $outname
+    # Make countsketch and produce UMAP and feature plots
+    Rscript ~/data/sim/proc_data.R $outname
+
+    cp /home/douglas/data/sim/$outname/umap* /home/douglas/data/sim/chromvsplasmid_UMAPs
+    cp /home/douglas/data/sim/$outname/*.json /home/douglas/data/sim/chromvsplasmid_UMAPs
+
+    # An effort to save space
+    rm /home/douglas/data/sim/$outname/$outname.1.tirp.gz
+
+done

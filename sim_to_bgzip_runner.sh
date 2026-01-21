@@ -4,8 +4,8 @@
 timestamp=$(date +"%y%m%d_%H:%M")
 
 # Filenames
-outname=$timestamp"out"
-outname_meta=$outname".1_meta.tsv"
+outname=$timestamp"CHROM_PLASMID_TEST_S_enterica"
+outname_meta=meta_$outname".1.tsv"
 
 # Args are name of output file, name of output metafile and lastly the number of bytes for chromosome-ref chunklength.
 cargo run $outname.1.tirp $outname_meta 10000

@@ -187,17 +187,15 @@ fn write_chrom_to_tirp_line(bact_entry: &Bactdatafromfasta,
   // Purpose is to use the simulated fragments, reformat them to reads and write to a .tirp file.
   // --Thinking that maybe using the identifier as the cell-id?
   let full_seq = &bact_entry.fasta_as_vec_hashmap.clone().into_iter().filter(|(_v,hm)| hm["chr_name"] == "Chromosome").next().unwrap().1.get("contig_seq_str").unwrap().to_string();
-
   for chunk_idx in 0..=((full_seq.len() / bytes_chrom_r1) + 1) {
+    // Quickout in case of overflow
+    if chunk_idx*bytes_chrom_r1-(chunk_idx*31) >= full_seq.len(){
+      break;
+    }
     let seq = 
       if (chunk_idx+1)*bytes_chrom_r1-(31*chunk_idx) >= full_seq.len() {&full_seq[chunk_idx*bytes_chrom_r1-(chunk_idx*31)..]}
       else {&full_seq[chunk_idx*bytes_chrom_r1-(31*chunk_idx)..(chunk_idx+1)*bytes_chrom_r1-(chunk_idx*31)]};
-/*     let _out_str_line = format!("cell#{:06}_chromref\t1\t1\t{}\t{}\t{}\t{}\t \n", 
-                                        cellid_hashnum, 
-                                        seq, 
-                                        String::from_utf8(seq.chars().rev().map(|b| base_comp_lut_var[b as usize]).collect::<Vec<u8>>()).unwrap(),
-                                        (0..seq.len()).map(|_| "F").collect::<String>(),
-                                        (0..seq.len()).map(|_| "F").collect::<String>(),); */
+
     write!(output_file, "cell#{:06}_chromref", cellid_hashnum).expect("Problem with writing tirp data content");
     output_file.write_all(b"\t1").expect("Problem with writing tirp data content"); 
     output_file.write_all(b"\t1\t").expect("Problem with writing tirp data content");  

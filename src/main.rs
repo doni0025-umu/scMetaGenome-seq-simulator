@@ -76,9 +76,10 @@ fn main() -> std::io::Result<()> {
         read_simulator(&bact_entry, frag_len_distr, &mut output_file, &phred_score_prea, cellid_hashnum.id_counter, &mut out_metafile, poi, bytes_chrom_r1);
         cellid_hashnum.count()
       }
-    }
     output_file.flush().expect("Problem with flushing output tirp file!");
     out_metafile.flush().expect("Problem with flushing output metafile!");
+    }
+
     Ok(())
     }
 
@@ -104,7 +105,8 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
     let seq_len = contig_hashmap["contig_seq_str"].len();
 
     // Decide the Copy Number via poission and some valid meta knowledge
-    let copy_number = if contig_hashmap["chr_name"] == "Chromosome" {1 as usize} else {poi.sample(&mut rand::rng()) as usize};
+    let copy_number = if contig_hashmap["chr_name"] == "Chromosome" {1 as usize} 
+                              else {poi.sample(&mut rand::rng()) as usize};
     let mut chr_name = contig_hashmap.get("chr_name").unwrap().clone();
     chr_name.push_str(&format!("{}", idx_in_fasta));
 

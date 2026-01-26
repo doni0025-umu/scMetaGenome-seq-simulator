@@ -1,0 +1,15 @@
+{
+    "chromosome_test": "99",
+    "chromosomeandplasmid_test": "1"
+}
+
+
+#### The OG list of template accessions ####
+# GCF_000005845.2 GCF_000006945.2 GCF_000013425.1 GCF_000161615.1 GCF_000412675.1
+{
+    "GCF_000005845.2":"10",
+    "GCF_000006945.2":"10",
+    "GCF_000013425.1":"10",
+    "GCF_000161615.1":"10",
+    "GCF_000412675.1":"10"
+}

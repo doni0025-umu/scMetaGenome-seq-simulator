@@ -7,7 +7,8 @@ do
     timestamp=$(date +"%y%m%d_%H:%M")
 
     # Filenames
-    outname=chromvschrom+plas$timestamp
+    outname=gut_1000_cells$timestamp
+    #outname=oldjob
     outname_meta=meta_$outname".1.tsv"
 
     # Args are name of output file, name of output metafile and lastly the number of bytes for chromosome-ref chunklength.
@@ -22,8 +23,8 @@ do
     #### Below is meant for beagle and running the sim ####################
     #######################################################################
 
-    mkdir ~/data/sim/$outname
-    mkdir ~/data/sim/$outname/countsketch_mat.csv
+    mkdir -p ~/data/sim/$outname
+    mkdir -p ~/data/sim/$outname/countsketch_mat.csv
 
     # Meant for the data-dir
     echo "(for beagle) Sending results to /home/douglas/data/sim"

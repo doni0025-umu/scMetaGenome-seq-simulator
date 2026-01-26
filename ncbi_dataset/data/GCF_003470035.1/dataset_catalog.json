@@ -1,0 +1,26 @@
+{
+"apiVersion": "V2",
+"assemblies": [
+{
+  "files": [
+    {
+      "filePath": "assembly_data_report.jsonl",
+      "fileType": "DATA_REPORT",
+      "uncompressedLengthBytes": "3636"
+    }
+  ]
+},{
+  "accession": "GCF_003470035.1",
+  "files": [
+    {
+      "filePath": "GCF_003470035.1/GCF_003470035.1_ASM347003v1_genomic.fna",
+      "fileType": "GENOMIC_NUCLEOTIDE_FASTA",
+      "uncompressedLengthBytes": "3996034"
+    },
+    {
+      "filePath": "GCF_003470035.1/sequence_report.jsonl",
+      "fileType": "SEQUENCE_REPORT",
+      "uncompressedLengthBytes": "28847"
+    }
+  ]
+}]}

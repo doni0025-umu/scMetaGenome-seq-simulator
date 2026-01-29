@@ -12,6 +12,8 @@ use std::io::{BufWriter,Write};
 use json;
 use std::fs::DirEntry;
 use indicatif::ProgressBar;
+// use bgzip::{BGZFWriter, Compression};
+
 
 
 struct Bactdatafromfasta <'a>{
@@ -49,19 +51,20 @@ fn main() -> std::io::Result<()> {
     // Preamble for read_simulator
     let frag_len_distr: Normal<f32> = Normal::new(400.0, 50.0).unwrap();
     let poi = Poisson::new(13.0).unwrap();
+    let mut runparams_dir = std::fs::read_dir("active_run_params").unwrap();
 
     // Preamble for write-to-tirp
+
     let mut output_file  = BufWriter::new(std::fs::OpenOptions::new().write(true).truncate(true).create(true).open(&args[1]).expect("This path could NOT be used as output path. Maybe dir does not exist?"));
     let phred_score_prea = (0..150).map(|_| "F").collect::<String>();
 
     // Preamble for write-chrom-to-tirp
-    let bytes_chrom_r1 = *&args[3].parse::<usize>().unwrap();
 
 
     // Preamble for metafile_line_writer
     let mut out_metafile = BufWriter::new(std::fs::OpenOptions::new().write(true).truncate(true).create(true).open(&args[2]).expect("This path could NOT be used as Metafile output path. Maybe dir does not exist?"));
 
-    let metagenome_json  = json::parse(&fs::read_to_string("run-setup.json").expect("could not read run-setup.json!")).expect("Problem with run-setup.json");
+    let metagenome_json  = json::parse(&find_file_in_asmbly(&mut runparams_dir, ".json")).expect("Could not read the setup file.");
 
     let mut cellid_hashnum = CellidHashnum {
       id_counter: 1,
@@ -73,7 +76,7 @@ fn main() -> std::io::Result<()> {
       let num_bacteria = (&metagenome_json[&bact_entry.assembly_name].to_string()).parse::<usize>().expect("Could not convert into usize.");
       for _ in 0..num_bacteria {
         // Function calls
-        read_simulator(&bact_entry, frag_len_distr, &mut output_file, &phred_score_prea, cellid_hashnum.id_counter, &mut out_metafile, poi, bytes_chrom_r1);
+        read_simulator(&bact_entry, frag_len_distr, &mut output_file, &phred_score_prea, cellid_hashnum.id_counter, &mut out_metafile, poi);
         cellid_hashnum.count()
       }
     output_file.flush().expect("Problem with flushing output tirp file!");
@@ -90,8 +93,7 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
                     phred_score: &String,
                     cellid_hashnum: usize,
                     out_metafile: &mut BufWriter<File>,
-                    poi: Poisson<f64>,
-                    bytes_chrom_r1: usize
+                    poi: Poisson<f64>
                 ) -> () {
   // Meant to take a (heading, seq) tuple and give the heading coupled with digested fragments (random substrings) stored in a Vectors with string elements.
   // Each sample should have equal amounts of sequencing depth. That SHOULD correspond to the number of times looped over a specific genome(?)
@@ -150,7 +152,7 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
   // Write info out to the metafile
   metafile_line_writer(out_metafile, &chr_name, &cellid_hashnum, &copy_number, &num_of_reads, &bact_entry.strain_name,);
 }
-write_chrom_to_tirp_line(&bact_entry, output_file, &cellid_hashnum, bytes_chrom_r1);
+write_chrom_to_tirp_line(&bact_entry, output_file, &cellid_hashnum);
                    }
 
 // Writer functions
@@ -181,11 +183,11 @@ fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
 }
 fn write_chrom_to_tirp_line(bact_entry: &Bactdatafromfasta,
                                 output_file: &mut BufWriter<File>,
-                                cellid_hashnum: &usize,
-                                bytes_chrom_r1: usize) -> () {
+                                cellid_hashnum: &usize,) -> () {
   // Purpose is to use the simulated fragments, reformat them to reads and write to a .tirp file.
   // --Thinking that maybe using the identifier as the cell-id?
   let full_seq = bact_entry.fasta_as_vec_hashmap.clone().into_iter().filter(|(_v,hm)| hm["chr_name"] == "Chromosome").next();
+  let bytes_chrom_r1 = 10_000;
   match full_seq {
     None => return (),
     Some(full_seq) => {

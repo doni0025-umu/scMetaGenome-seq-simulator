@@ -4,7 +4,7 @@ This Rust program simulates reads to a hacked BED file format (called the .tirp-
 
 Requires
 -rust toolchain: https://rustup.rs/
--Datasets: https://www.ncbi.nlm.nih.gov/datasets/docs/v2/command-line-tools/download-and-install/
+-Datasets: https://www.ncbi.nlm.nih.gov/datasets/docs/v2/command-line-tools/download-and-install/ (datasets version: 18.13.0)
 -bgzip from htslib: https://www.htslib.org/download/
 
 # How to run

@@ -1,0 +1,8 @@
+*.tirp
+*.tirp.gz
+*.tsv
+fasta-files/*
+ncbi_dataset/*
+out-metas/*
+test_heap/*
+accessions.txt

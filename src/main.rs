@@ -12,6 +12,7 @@ use std::io::{BufWriter,Write};
 use json;
 use std::fs::DirEntry;
 use indicatif::ProgressBar;
+use glob::glob;
 // use bgzip::{BGZFWriter, Compression};
 
 
@@ -46,7 +47,7 @@ fn main() -> std::io::Result<()> {
     // Preamble for parse fasta
     println!("Starting program!");
     let args: Vec<String> = env::args().collect();
-    let dir_genomes = std::fs::read_dir("ncbi_dataset/data").unwrap();
+    let dir_genomes = std::fs::read_dir(glob("ncbi_dataset/*data").expect("Directory ending in \"data\" not found.").next().unwrap().expect("Could not unwrap the PathBuf.")).unwrap();
 
     // Preamble for read_simulator
     let frag_len_distr: Normal<f32> = Normal::new(400.0, 50.0).unwrap();
@@ -74,6 +75,7 @@ fn main() -> std::io::Result<()> {
       let bact_entry = instantiate_bact(entry.expect("Problem with reading entry!"));
       // Function (all things for an entry so it is loaded and ready) -> <HashMap(PathBuf, HashMap(String, ))
       let num_bacteria = (&metagenome_json[&bact_entry.assembly_name].to_string()).parse::<usize>().expect("Could not convert into usize.");
+      println!("{}", num_bacteria);
       for _ in 0..num_bacteria {
         // Function calls
         read_simulator(&bact_entry, frag_len_distr, &mut output_file, &phred_score_prea, cellid_hashnum.id_counter, &mut out_metafile, poi);
@@ -108,7 +110,10 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
 
     // Decide the Copy Number via poission and some valid meta knowledge
     let copy_number = if contig_hashmap["chr_name"] == "Chromosome" {1 as usize} 
-                              else {poi.sample(&mut rand::rng()) as usize};
+         //  CONTROLLING COPY NUMBER TO 1 FOR EVERY CONTIG 
+                            else {1 as usize};
+                            //else {poi.sample(&mut rand::rng()) as usize}; 
+
     let mut chr_name = contig_hashmap.get("chr_name").unwrap().clone();
     chr_name.push_str(&format!("{}", idx_in_fasta));
 

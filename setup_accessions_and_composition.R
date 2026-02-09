@@ -2,13 +2,13 @@ library(tidyverse)
 
 # Table S3A, related to Figure 3. Estimation of inter- and intra-individual varability of the 384 microbial species. ICC is the intraclass correlation coefficient calculated as the ratio between the intra-individual and the total variance. Prevalence of microbial species is calculated for all 300 samples (column H) or for all individuals (in at least one of the 4 samples, column I). Reference intervals for the relative abundance (normal ranges) are calculated as the central 95% of the populations for the 300 samples. 
 
-df_S3A <- read.csv("~/data/sim/TableS3_VariabilityPatterns_384_species.csv",
+df_S3A <- read.csv("/husky/douglas/sim/TableS3_VariabilityPatterns_384_species.csv",
                    header = T)
 colnames(df_S3A)[1] <- "Organism.Name"
 
 # Dataset gathered from NCBI based on parameters specified in the link.
 # https://www.ncbi.nlm.nih.gov/datasets/genome/?taxon=201174,1224,976,1239&assembly_level=1:3
-df_NCBI_fourbig_scaffold_up <- read.delim("~/data/sim/scaffold_and_up_429Kgens_NCBI.tsv")
+df_NCBI_fourbig_scaffold_up <- read.delim("/husky/douglas/sim/scaffold_and_up_429Kgens_NCBI.tsv")
 
 # Merging these two dfs so that all data present in df_S3A that has a RefSeq gets added to the new df.
 # Joining adata with metadata and adjusting attributes in adata for UMAP coloring ----
@@ -34,6 +34,11 @@ if(length(commandArgs(trailingOnly = T)) != 0) {
 
 
 final_unique_species_df$bacteria_per_species <- c(ceiling(10^(final_unique_species_df$log10.relative.abundance)/sum(10^(final_unique_species_df$log10.relative.abundance))*num_of_SPCs))
+
+###### Select my bacteria ######
+final_unique_species_df <- final_unique_species_df %>% filter(Organism.Name == "Bacteroides uniformis")
+################################
+
 
 json_string <- "{"
 for (i in 1:nrow(final_unique_species_df)) {

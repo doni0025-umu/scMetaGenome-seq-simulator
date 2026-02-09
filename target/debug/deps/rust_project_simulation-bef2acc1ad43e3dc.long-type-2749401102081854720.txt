@@ -1,0 +1,1 @@
+Result<Paths, PatternError>: AsRef<Path>

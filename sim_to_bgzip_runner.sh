@@ -57,7 +57,7 @@ do
     #######################################################################
 
     mkdir -p /husky/douglas/sim/$outname
-    mkdir -p /husky/douglas/sim/$outname/countsketch_mat.csv
+    #mkdir -p /husky/douglas/sim/$outname/countsketch_mat.csv
     mkdir -p /husky/douglas/sim/$outname/meta_and_setup
 
     # Meant for the data-dir
@@ -75,11 +75,11 @@ do
     cp /husky/douglas/sim/$outname/umap* /husky/douglas/sim/chromvsplasmid_UMAPs
     cp active_run_params/*.json /husky/douglas/sim/chromvsplasmid_UMAPs
 
-    if overwrite_old
+    if $overwrite_old
         then
             # Clearing previous oldjob
             rm -r /husky/douglas/sim/oldjob/*
-            mkdir -p /husky/douglas/sim/oldjob/countsketch_mat.csv
+            #mkdir -p /husky/douglas/sim/oldjob/countsketch_mat.csv # Deprecated use since 260205
             mkdir -p /husky/douglas/sim/oldjob/meta_and_setup
             
             # Depositing results into oldjob
@@ -95,6 +95,9 @@ do
 
 
     fi
+
+    cargo run --manifest-path /home/douglas/spectra_data_countsketch_calc/Cargo.toml $outname
+    Rscript plot_costhetas.R $outname
 
 
     # An effort to save space

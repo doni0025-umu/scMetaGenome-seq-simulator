@@ -50,7 +50,9 @@ fn main() -> std::io::Result<()> {
     let dir_genomes = std::fs::read_dir(glob("ncbi_dataset/*data").expect("Directory ending in \"data\" not found.").next().unwrap().expect("Could not unwrap the PathBuf.")).unwrap();
 
     // Preamble for read_simulator
-    let frag_len_distr: Normal<f32> = Normal::new(400.0, 50.0).unwrap();
+    let mean_frag_length = 400_f32;
+    let frag_per_bp = (args[3].parse::<f32>().expect("Could not parse seq depth param")/mean_frag_length) as f64;
+    let frag_len_distr: Normal<f32> = Normal::new(mean_frag_length, 50.0).unwrap();
     let poi = Poisson::new(13.0).unwrap();
     let mut runparams_dir = std::fs::read_dir("active_run_params").unwrap();
 
@@ -78,7 +80,7 @@ fn main() -> std::io::Result<()> {
       println!("{}", num_bacteria);
       for _ in 0..num_bacteria {
         // Function calls
-        read_simulator(&bact_entry, frag_len_distr, &mut output_file, &phred_score_prea, cellid_hashnum.id_counter, &mut out_metafile, poi);
+        read_simulator(&bact_entry, frag_len_distr, &mut output_file, &phred_score_prea, cellid_hashnum.id_counter, &mut out_metafile, poi, frag_per_bp);
         cellid_hashnum.count()
       }
     output_file.flush().expect("Problem with flushing output tirp file!");
@@ -95,7 +97,8 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
                     phred_score: &String,
                     cellid_hashnum: usize,
                     out_metafile: &mut BufWriter<File>,
-                    poi: Poisson<f64>
+                    poi: Poisson<f64>,
+                    frag_per_bp: f64
                 ) -> () {
   // Meant to take a (heading, seq) tuple and give the heading coupled with digested fragments (random substrings) stored in a Vectors with string elements.
   // Each sample should have equal amounts of sequencing depth. That SHOULD correspond to the number of times looped over a specific genome(?)
@@ -110,15 +113,15 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
 
     // Decide the Copy Number via poission and some valid meta knowledge
     let copy_number = if contig_hashmap["chr_name"] == "Chromosome" {1 as usize} 
-         //  CONTROLLING COPY NUMBER TO 1 FOR EVERY CONTIG 
-                            else {1 as usize};
+         //  CONTROLLING COPY NUMBER TO 10 FOR EVERY plasmid
+                            else {10 as usize};
                             //else {poi.sample(&mut rand::rng()) as usize}; 
 
     let mut chr_name = contig_hashmap.get("chr_name").unwrap().clone();
     chr_name.push_str(&format!("{}", idx_in_fasta));
 
     // Float serves as "fragment per base pair". ############# CHANGE IF NEEDED OR TUNED #############
-    let num_of_reads = copy_number*(0.002*(seq_len as f64)).floor() as usize;
+    let num_of_reads = copy_number*(frag_per_bp*(seq_len as f64)).floor() as usize;
 
     // Progress bar setup
     let bar = ProgressBar::new_spinner();
@@ -140,10 +143,14 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
       };
       // Ensure circular chromosome property for sequence
       if &start_seq_idx + &fragment_len > seq_len {
-        let mut fragment = String::new();
-        fragment.push_str(&contig_hashmap["contig_seq_str"][start_seq_idx..]);
-        fragment.push_str(&contig_hashmap["contig_seq_str"][..(start_seq_idx+fragment_len-seq_len)]);
-        format_and_write_to_tirp_line((&contig_name, &fragment), output_file, &phred_score, &cellid_hashnum);
+        if &fragment_len >= &seq_len {
+          format_and_write_to_tirp_line((&contig_name, &contig_hashmap["contig_seq_str"]), output_file, &phred_score, &cellid_hashnum); 
+        } else {
+          let mut fragment = String::new();
+          fragment.push_str(&contig_hashmap["contig_seq_str"][start_seq_idx..]);
+          fragment.push_str(&contig_hashmap["contig_seq_str"][..(start_seq_idx+fragment_len-seq_len)]);
+          format_and_write_to_tirp_line((&contig_name, &fragment), output_file, &phred_score, &cellid_hashnum);
+        }
       } else {
         let fragment = contig_hashmap["contig_seq_str"][start_seq_idx..(&start_seq_idx+&fragment_len)].to_string();
         format_and_write_to_tirp_line((&contig_name, &fragment), output_file, &phred_score, &cellid_hashnum,);
@@ -155,7 +162,7 @@ fn read_simulator(bact_entry: &Bactdatafromfasta,
   
 
   // Write info out to the metafile
-  metafile_line_writer(out_metafile, &chr_name, &cellid_hashnum, &copy_number, &num_of_reads, &bact_entry.strain_name,);
+  metafile_line_writer(out_metafile, &chr_name, &cellid_hashnum, &copy_number, &num_of_reads, &bact_entry);
 }
 write_chrom_to_tirp_line(&bact_entry, output_file, &cellid_hashnum);
                    }
@@ -189,24 +196,27 @@ fn format_and_write_to_tirp_line(tup_contigname_fragment: (&String, &String),
 fn write_chrom_to_tirp_line(bact_entry: &Bactdatafromfasta,
                                 output_file: &mut BufWriter<File>,
                                 cellid_hashnum: &usize,) -> () {
+  //////////////////////
+  /// ///////// trying to avoid chromosome contamination
+  return;
+
   // Purpose is to use the simulated fragments, reformat them to reads and write to a .tirp file.
   // --Thinking that maybe using the identifier as the cell-id?
   let full_seq = bact_entry.fasta_as_vec_hashmap.clone().into_iter().filter(|(_v,hm)| hm["chr_name"] == "Chromosome").next();
-  let bytes_chrom_r1 = 10_000;
   match full_seq {
     None => return (),
     Some(full_seq) => {
       let full_seq = full_seq.1.get("contig_seq_str").unwrap().to_string();
-      for chunk_idx in 0..=((full_seq.len() / bytes_chrom_r1) + 1) {
+      for chunk_idx in 0..=((full_seq.len() / 10_000) + 1) {
         // Quickout in case of overflow
-        if chunk_idx*bytes_chrom_r1-(chunk_idx*31) >= full_seq.len(){
+        if chunk_idx*10_000-(chunk_idx*31) >= full_seq.len(){
           break;
         }
         let seq = 
-          if (chunk_idx+1)*bytes_chrom_r1-(31*chunk_idx) >= full_seq.len() {&full_seq[chunk_idx*bytes_chrom_r1-(chunk_idx*31)..]}
-          else {&full_seq[chunk_idx*bytes_chrom_r1-(31*chunk_idx)..(chunk_idx+1)*bytes_chrom_r1-(chunk_idx*31)]};
+          if (chunk_idx+1)*10_000-(31*chunk_idx) >= full_seq.len() {&full_seq[chunk_idx*10_000-(chunk_idx*31)..]}
+          else {&full_seq[chunk_idx*10_000-(31*chunk_idx)..(chunk_idx+1)*10_000-(chunk_idx*31)]};
 
-        write!(output_file, "cell#{:06}_chromref", cellid_hashnum).expect("Problem with writing tirp data content");
+        write!(output_file, "cell#{:06}-chromref", cellid_hashnum).expect("Problem with writing tirp data content");
         output_file.write_all(b"\t1").expect("Problem with writing tirp data content"); 
         output_file.write_all(b"\t1\t").expect("Problem with writing tirp data content");  
         output_file.write_all(seq.as_bytes()).expect("Problem with writing tirp data content");
@@ -222,16 +232,15 @@ fn write_chrom_to_tirp_line(bact_entry: &Bactdatafromfasta,
   };
 
 
-}
-   
+} 
 fn metafile_line_writer(out_metafile: &mut BufWriter<File>,
                         chr_name: &String,
                         cellid_hashnum: &usize,
                         copy_number: &usize,
                         num_of_reads: &usize,
-                        strain_name: &String,
+                        bact_entry: &Bactdatafromfasta,
                     ) -> () {
-    let out_str_line = format!("cell#{:06}\t{}\t{}\t{}\t{}\n",cellid_hashnum, strain_name, copy_number, chr_name, num_of_reads,);
+    let out_str_line = format!("cell#{:06}\t{}\t{}\t{}\t{}\t{}\n",cellid_hashnum, bact_entry.strain_name, copy_number, chr_name, num_of_reads, &bact_entry.assembly_name);
     let _ = out_metafile.write_all(out_str_line.as_bytes()).expect("Problem with writing metadata content");
 }
 

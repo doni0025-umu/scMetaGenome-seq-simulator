@@ -2,14 +2,6 @@
 
 # Shorthand for grabbing a fasta from NCBI datasets
 
-
-echo "Are you sure? Your active run params will be deleted in favor of your new params!"
-echo " - press [y] to run"
-echo " - press any other key to abort"
-read -n 1
-echo ""
-
-
 usage() {
     echo ""
     echo "  -h,   displays this help message."
@@ -30,6 +22,12 @@ while getopts "hc:" flag; do
    ;;
  esac
 done
+
+echo "Are you sure? Your active run params will be deleted in favor of your new params!"
+echo " - press [y] to run"
+echo " - press any other key to abort"
+read -n 1
+echo ""
 
    # (optional) move to a new line
 if [[ $REPLY =~ ^[Yy]$ ]]

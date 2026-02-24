@@ -36,7 +36,7 @@ if(length(commandArgs(trailingOnly = T)) != 0) {
 final_unique_species_df$bacteria_per_species <- c(ceiling(10^(final_unique_species_df$log10.relative.abundance)/sum(10^(final_unique_species_df$log10.relative.abundance))*num_of_SPCs))
 
 ###### Select my bacteria ######
-final_unique_species_df <- final_unique_species_df %>% filter(Organism.Name == "Bacteroides uniformis")
+final_unique_species_df <- final_unique_species_df #%>% filter(Organism.Name == "Bacteroides uniformis")
 ################################
 
 
